@@ -1,0 +1,58 @@
+cmake_minimum_required(VERSION 3.0...3.25)
+
+project(
+    DECALS 
+    VERSION 0.0.1 
+    DESCRIPTION "Different decal rendering techniques"
+)
+
+set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/src")
+set(INCLUDE_PATH "${PROJECT_SOURCE_DIR}/include")
+set(INCLUDE_GLM_PATH "${PROJECT_SOURCE_DIR}/glm")
+set(INCLUDE_IMGUI_PATH "${PROJECT_SOURCE_DIR}/imgui")
+set(INCLUDE_IMGUIZMO_PATH "${PROJECT_SOURCE_DIR}/ImGuizmo")
+set(INCLUDE_TINYOBJLOADER_PATH "${PROJECT_SOURCE_DIR}/tinyobjloader")
+set(INCLUDE_TINYGLTF_PATH "${PROJECT_SOURCE_DIR}/tinygltf")
+set(INCLUDE_NANORT_PATH "${PROJECT_SOURCE_DIR}/nanort")
+
+file(GLOB_RECURSE HS "${INCLUDE_PATH}/*.h")
+file(GLOB_RECURSE CPPS "${SOURCE_PATH}/*.cpp")
+file(GLOB_RECURSE GLM_HS "${INCLUDE_GLM_PATH}/*.h")
+file(GLOB_RECURSE IMGUI_HS "${INCLUDE_IMGUI_PATH}/*.h")
+file(GLOB_RECURSE IMGUIZMO_HS "${INCLUDE_IMGUIZMO_PATH}/*.h")
+file(GLOB_RECURSE TINYOBJLOADER_HS "${INCLUDE_NANORT_PATH}/tiny_obj_loader.h")
+file(GLOB_RECURSE TINYGLTF_HS "${INCLUDE_TINYGLTF_PATH}/tiny_gltf.h")
+file(GLOB_RECURSE NANORT_HS "${INCLUDE_NANORT_PATH}/nanort.h")
+
+add_executable(App 
+    ${HS} 
+    ${CPPS} 
+    ${GLM_HS}
+    ${IMGUI_HS}
+    ${IMGUIZMO_HS}
+    ${TINYOBJLOADER_HS}
+    ${TINYGLTF_HS}
+    ${NANORT_HS}
+)
+
+target_include_directories(App  
+    PUBLIC ${INCLUDE_PATH}
+    ${INCLUDE_GLM_PATH}
+    ${INCLUDE_IMGUI_PATH}
+    ${INCLUDE_IMGUIZMO_PATH}
+    ${INCLUDE_TINYOBJLOADER_PATH}
+    ${INCLUDE_TINYGLTF_PATH}
+    ${INCLUDE_NANORT_PATH}
+)
+
+set_target_properties(App PROPERTIES
+    CXX_STANDARD 11
+)
+
+target_compile_features(App PRIVATE cxx_std_11)
+
+if (MSVC)
+    target_compile_options(App PRIVATE /W4)
+else()
+    target_compile_options(App PRIVATE -Wall -Wextra -pedantic)
+endif()
