@@ -1,18 +1,18 @@
 [submodule "glm"]
-	path = glm
+	path = submodules/glm
 	url = https://github.com/felipunky/glm
 [submodule "imgui"]
-	path = imgui
+	path = submodules/imgui
 	url = https://github.com/felipunky/imgui
 [submodule "ImGuizmo"]
-	path = ImGuizmo
+	path = submodules/ImGuizmo
 	url = https://github.com/felipunky/ImGuizmo
 [submodule "nanort"]
-	path = nanort
+	path = submodules/nanort
 	url = https://github.com/felipunky/nanort
 [submodule "tinygltf"]
-	path = tinygltf
+	path = submodules/tinygltf
 	url = https://github.com/felipunky/tinygltf
 [submodule "tinyobjloader"]
-	path = tinyobjloader
+	path = submodules/tinyobjloader
 	url = https://github.com/felipunky/tinyobjloader
