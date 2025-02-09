@@ -107,26 +107,34 @@ bool background_is_black = true;
 // the function called by the javascript code
 extern "C" void EMSCRIPTEN_KEEPALIVE toggle_background_color() { background_is_black = !background_is_black; }
 
-static bool main_loop_running = true;
+// Window dimensions
+const int SCREEN_WIDTH  = 640;
+const int SCREEN_HEIGHT = 480;
+
+// Initialization function.
+bool init();
+
+// Main loop, we need this given that we are targeting multiple platforms.
 void main_loop();
 
 SDL_Window* window;
+SDL_GLContext glContext;
+static bool main_loop_running = true;
 
 int main()
 {
-    std::cout << "HelloWorld!" << std::endl;
-    SDL_CreateWindowAndRenderer(640, 480, 0, &window, nullptr);
+    /*std::cout << "HelloWorld!" << std::endl;
+    SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, nullptr);
 
-    #ifdef __EMSCRIPTEN__
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    #else
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    #endif
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);*/
+
+    if (!init())
+    {
+        return -1;
+    }
 
     float points[] = {
         0.0f,  0.5f,  0.0f,
@@ -191,6 +199,56 @@ int main()
     SDL_Quit();
 
     return EXIT_SUCCESS;
+}
+
+bool init()
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
+    // Set OpenGL attributes
+#ifdef __EMSCRIPTEN__
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
+
+    // Create SDL window
+    window = SDL_CreateWindow("OpenGL with SDL2 & GLAD",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        SCREEN_WIDTH, SCREEN_HEIGHT,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+    if (!window) 
+    {
+        std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    // Create OpenGL context
+    glContext = SDL_GL_CreateContext(window);
+    if (!glContext) 
+    {
+        std::cerr << "OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+#ifndef __EMSCRIPTEN__
+    if (!gladLoadGL()) {
+        std::cerr << "Failed to initialize GLAD!" << std::endl;
+        return false;
+    }
+#endif
+
+    // Print OpenGL version
+    std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+
+    return true;
 }
 
 void main_loop()
