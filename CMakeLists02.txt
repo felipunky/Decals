@@ -8,6 +8,7 @@ project(
 
 # add_definitions(-std=c++17)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 set(SOURCE_PATH "${PROJECT_SOURCE_DIR}/src")
 set(INCLUDE_PATH "${PROJECT_SOURCE_DIR}/include")
@@ -18,7 +19,6 @@ set(INCLUDE_PATH "${PROJECT_SOURCE_DIR}/include")
 if(DEFINED EMSCRIPTEN)
     message(STATUS "This is an EMSCRIPTEN build!")
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
     set(USE_FLAGS "-std=c++17 -g -s USE_SDL=2")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
@@ -34,51 +34,29 @@ if(DEFINED EMSCRIPTEN)
 
 else()
     message(STATUS "This is not an EMSCRIPTEN build!")
-    # We need this to be able to compile SHARED/dynamic libraries in Windows.
+
     if(WIN32)
         set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
         set(BUILD_SHARED_LIBS TRUE)
     endif()
 
-    # Find SDL2 and OpenGL
-    find_package(SDL2 REQUIRED)
-    find_package(OpenGL REQUIRED)
-
-    # Add GLAD sources
-    add_library(glad STATIC
-        "${SOURCE_PATH}/glad.c"
-        "${INCLUDE_PATH}/glad/glad.h"
-        "${INCLUDE_PATH}/KHR/khrplatform.h"
-    )
-    target_include_directories(glad PUBLIC 
-        ${INCLUDE_PATH}
+    add_library(calc SHARED
+    "${SOURCE_PATH}/calc.cpp"
+    "${INCLUDE_PATH}/calc.h"
     )
 
-    # Set sources
     add_executable(App 
+        "${INCLUDE_PATH}/calc.h"
         "${SOURCE_PATH}/main.cpp"
     )
 
-    target_link_libraries(App PRIVATE
-        SDL2::SDL2 
-        SDL2::SDL2main
-        OpenGL::GL
-        glad
+    target_include_directories(App PUBLIC
+        ${INCLUDE_PATH}
     )
 
-    # Set Windows-specific properties
-    if(WIN32)
-        add_definitions(-DWIN32_LEAN_AND_MEAN)
-        target_compile_definitions(App PRIVATE SDL_MAIN_HANDLED)  # Needed to avoid WinMain issues
-    endif()
-
-    # Copy SDL2.dll to the output directory on Windows
-    if(WIN32)
-        add_custom_command(TARGET App POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE_DIR:SDL2::SDL2>/SDL2.dll"
-            "$<TARGET_FILE_DIR:App>"
-        )
-    endif()
+    target_link_libraries(App PUBLIC calc)
 endif()
 
+# target_include_directories(calc PUBLIC 
+#     ${INCLUDE_PATH}
+# )
