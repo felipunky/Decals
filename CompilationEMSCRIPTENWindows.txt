@@ -1,2 +1,0 @@
-emcmake cmake -G Ninja ..
-cmake --build .

@@ -75,31 +75,9 @@
     #include <glad/glad.h>
     #define EMSCRIPTEN_KEEPALIVE
 #endif
-#include <SDL.h>
+#include "shader.h"
 
 using namespace std;
-
-// Shader sources
-const GLchar* vertexSource =
-    "#version 300 es                              \n"
-    "precision highp float;                       \n"    
-    "layout (location = 0) in vec3 position;      \n"
-    "layout (location = 1) in vec3 vertexColor;   \n" 
-    "out vec3 color;                              \n"   
-    "void main()                                  \n"
-    "{                                            \n"
-    "  color = vertexColor;                       \n"
-    "  gl_Position = vec4(position, 1.0);         \n"
-    "}                                            \n";
-const GLchar* fragmentSource =
-    "#version 300 es                              \n"
-    "precision highp float;                       \n" 
-    "in vec3 color;                               \n"
-    "out vec4 fragColor;                          \n"
-    "void main()                                  \n"
-    "{                                            \n"
-    "fragColor = vec4(color, 1.0);                \n"
-    "}                                            \n";
 
 // an example of something we will control from the javascript side
 bool background_is_black = true;
@@ -123,14 +101,6 @@ static bool main_loop_running = true;
 
 int main()
 {
-    /*std::cout << "HelloWorld!" << std::endl;
-    SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, nullptr);
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);*/
-
     if (!init())
     {
         return -1;
@@ -169,22 +139,8 @@ int main()
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
-    // Create and compile the vertex shader
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexSource, nullptr);
-    glCompileShader(vertexShader);
-
-    // Create and compile the fragment shader
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentSource, nullptr);
-    glCompileShader(fragmentShader);
-
-    // Link the vertex and fragment shader into a shader program
-    GLuint shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    glUseProgram(shaderProgram);
+    Shader shader = Shader("shaders/vertex.glsl", "shaders/fragment.glsl");
+    shader.use();
 
     #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(main_loop, 0, true);
@@ -251,6 +207,14 @@ bool init()
     return true;
 }
 
+void mouse_press(SDL_MouseButtonEvent& button)
+{
+    if (button.button == SDL_BUTTON_LEFT)
+    {
+        background_is_black = !background_is_black;
+    }
+}
+
 void main_loop()
 {
     SDL_Event event;
@@ -258,6 +222,11 @@ void main_loop()
     {
         switch (event.type)
         {
+            case SDL_MOUSEBUTTONDOWN:
+            {
+                mouse_press(event.button);
+                break;
+            }
             case SDL_QUIT:
             {
                 main_loop_running = false;
@@ -270,6 +239,10 @@ void main_loop()
                 {
                     main_loop_running = false;
                 }
+                break;
+            }
+            default:
+            {
                 break;
             }
         }

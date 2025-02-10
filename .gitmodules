@@ -16,3 +16,6 @@
 [submodule "submodules/tinyobjloader"]
 	path = submodules/tinyobjloader
 	url = https://github.com/felipunky/tinyobjloader
+[submodule "draco"]
+	path = draco
+	url = https://github.com/felipunky/draco
