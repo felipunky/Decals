@@ -21,6 +21,16 @@ add_subdirectory(${SUBMODULES_PATH}/glm)
 # Add tinyGLTF
 add_subdirectory(${SUBMODULES_PATH}/tinygltf)
 
+# Add ImGuizmo
+#set(IMGUIZMO_PATH ${SUBMODULES_PATH}/ImGuizmo)
+#add_library(ImGuizmo STATIC
+#    ${IMGUIZMO_PATH}/ImGuizmo.h
+#    ${IMGUIZMO_PATH}/ImGuizmo.cpp
+#)
+#target_include_directories(ImGuizmo PUBLIC 
+#    ${IMGUIZMO_PATH}
+#)
+
 #file(GLOB_RECURSE HS "${INCLUDE_PATH}/*.h")
 #MESSAGE(STATUS "HS: ${HS}")
 # file(GLOB_RECURSE CPPS "${SOURCE_PATH}/*.cpp")
@@ -105,6 +115,35 @@ else()
         ${INCLUDE_PATH}
     )
 
+    # Add imgui
+    set(IMGUI_PATH ${SUBMODULES_PATH}/imgui)
+    set(IMGUI_SRC
+        ${IMGUI_PATH}/imgui.h
+        ${IMGUI_PATH}/imgui.cpp
+        ${IMGUI_PATH}/imgui_demo.cpp
+        ${IMGUI_PATH}/imgui_draw.cpp
+        ${IMGUI_PATH}/imgui_tables.cpp
+        ${IMGUI_PATH}/imgui_widgets.cpp
+        ${IMGUI_PATH}/imgui_demo.cpp
+        ${IMGUI_PATH}/backends/imgui_impl_sdl2.h
+        ${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp
+        ${IMGUI_PATH}/backends/imgui_impl_opengl3.h
+        ${IMGUI_PATH}/backends/imgui_impl_opengl3.cpp
+        ${IMGUI_PATH}/imgui_internal.h
+    )
+    add_library(imgui STATIC
+        ${IMGUI_SRC}
+    )
+
+    target_link_libraries(imgui PUBLIC
+        SDL2::SDL2 
+        SDL2::SDL2main
+    )
+
+    target_include_directories(imgui PUBLIC
+        ${IMGUI_PATH}
+    )
+
     target_link_libraries(App PUBLIC
         SDL2::SDL2 
         SDL2::SDL2main
@@ -112,6 +151,7 @@ else()
         glad
         glm
         tinygltf
+        imgui
     )
 
     # Set Windows-specific properties

@@ -62,6 +62,14 @@
 //     return 0;
 // }
 
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "backends/imgui_impl_sdl2.h"
+#include "backends/imgui_impl_opengl3.h"
+
+//#include "ImGuizmo.h"
+
 #include <iostream>
 #include <functional>
 
@@ -92,12 +100,17 @@ const int SCREEN_HEIGHT = 480;
 // Initialization function.
 bool init();
 
+// Initialize imgui.
+void initImgui();
+
 // Main loop, we need this given that we are targeting multiple platforms.
 void main_loop();
 
 SDL_Window* window;
 SDL_GLContext glContext;
+const char* glsl_version = "#version 300 es";
 static bool main_loop_running = true;
+static bool show_demo_window = true;
 
 int main()
 {
@@ -105,6 +118,8 @@ int main()
     {
         return -1;
     }
+
+    initImgui();
 
     float points[] = {
         0.0f,  0.5f,  0.0f,
@@ -151,7 +166,13 @@ int main()
     }
     #endif
 
-    window = nullptr;
+    // Clean after ourselves
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+    
+    SDL_GL_DeleteContext(glContext);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 
     return EXIT_SUCCESS;
@@ -207,6 +228,25 @@ bool init()
     return true;
 }
 
+void initImgui()
+{
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
+    // You may manually call LoadIniSettingsFromMemory() to load settings from your own storage.
+    io.IniFilename = NULL;
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+}
+
 void mouse_press(SDL_MouseButtonEvent& button)
 {
     if (button.button == SDL_BUTTON_LEFT)
@@ -220,6 +260,7 @@ void main_loop()
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        ImGui_ImplSDL2_ProcessEvent(&event);
         switch (event.type)
         {
             case SDL_MOUSEBUTTONDOWN:
@@ -247,6 +288,18 @@ void main_loop()
             }
         }
     }
+
+    // imgui
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    if (show_demo_window)
+    {
+        ImGui::ShowDemoWindow(&show_demo_window);
+    }
+    ImGui::Render();
+
     // Clear the screen
     if( background_is_black )
     {
@@ -261,5 +314,6 @@ void main_loop()
     // Draw a triangle from the 3 vertices
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(window);
 }
