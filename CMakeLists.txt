@@ -20,16 +20,71 @@ add_subdirectory(${SUBMODULES_PATH}/glm)
 
 # Add tinyGLTF
 add_subdirectory(${SUBMODULES_PATH}/tinygltf)
+#set(TINYGLTF_PATH ${SUBMODULES_PATH}/tinygltf)
+#add_library(tinygltf STATIC
+#    ${TINYGLTF_PATH}/tiny_gltf.h
+#    ${TINYGLTF_PATH}/tiny_gltf.cc
+#)
+#target_include_directories(tinygltf PUBLIC
+#    ${TINYGLTF_PATH}
+#)
+
+# Add tinyobjloader
+add_subdirectory(${SUBMODULES_PATH}/tinyobjloader)
+#set(TINYOBJLOADER_PATH ${SUBMODULES_PATH}/tinyobjloader)
+#add_library(tinyobjloader STATIC
+#    ${TINYOBJLOADER_PATH}/tiny_obj_loader.h
+#    ${TINYOBJLOADER_PATH}/tiny_obj_loader.cc
+#)
+#target_include_directories(tinyobjloader PUBLIC
+#    ${TINYOBJLOADER_PATH}
+#)
+
+# Add imgui
+set(IMGUI_PATH ${SUBMODULES_PATH}/imgui)
+set(IMGUI_SRC
+    ${IMGUI_PATH}/imgui.h
+    ${IMGUI_PATH}/imgui.cpp
+    ${IMGUI_PATH}/imgui_demo.cpp
+    ${IMGUI_PATH}/imgui_draw.cpp
+    ${IMGUI_PATH}/imgui_tables.cpp
+    ${IMGUI_PATH}/imgui_widgets.cpp
+    ${IMGUI_PATH}/imgui_demo.cpp
+    ${IMGUI_PATH}/backends/imgui_impl_sdl2.h
+    ${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp
+    ${IMGUI_PATH}/backends/imgui_impl_opengl3.h
+    ${IMGUI_PATH}/backends/imgui_impl_opengl3.cpp
+    ${IMGUI_PATH}/imgui_internal.h
+)
+add_library(imgui STATIC
+    ${IMGUI_SRC}
+)
+
+target_include_directories(imgui PUBLIC
+    ${IMGUI_PATH}
+)
 
 # Add ImGuizmo
-#set(IMGUIZMO_PATH ${SUBMODULES_PATH}/ImGuizmo)
-#add_library(ImGuizmo STATIC
-#    ${IMGUIZMO_PATH}/ImGuizmo.h
-#    ${IMGUIZMO_PATH}/ImGuizmo.cpp
-#)
-#target_include_directories(ImGuizmo PUBLIC 
-#    ${IMGUIZMO_PATH}
-#)
+set(IMGUIZMO_PATH ${SUBMODULES_PATH}/ImGuizmo)
+add_library(ImGuizmo STATIC
+    ${IMGUIZMO_PATH}/ImGuizmo.h
+    ${IMGUIZMO_PATH}/ImGuizmo.cpp
+)
+target_include_directories(ImGuizmo PUBLIC 
+    ${IMGUI_PATH}
+    ${IMGUIZMO_PATH}
+)
+
+# Add NanoRT
+#add_subdirectory(${SUBMODULES_PATH}/nanort)
+set(NANORT_PATH ${SUBMODULES_PATH}/nanort)
+add_library(nanort STATIC
+    ${NANORT_PATH}/nanort.h
+    ${NANORT_PATH}/nanort.cc
+)
+target_include_directories(nanort PUBLIC
+    ${NANORT_PATH}
+)
 
 #file(GLOB_RECURSE HS "${INCLUDE_PATH}/*.h")
 #MESSAGE(STATUS "HS: ${HS}")
@@ -40,6 +95,7 @@ if(DEFINED EMSCRIPTEN)
 
     # Set sources for main
     add_executable(App
+        ${INCLUDE_PATH}/OpenGLTF.h
         ${INCLUDE_PATH}/shader.h
         ${SOURCE_PATH}/main.cpp
     )
@@ -59,6 +115,10 @@ if(DEFINED EMSCRIPTEN)
     target_link_libraries(App PUBLIC
         glm
         tinygltf
+        tinyobjloader
+        imgui
+        ImGuizmo
+        nanort
     )
 
     set_target_properties(App PROPERTIES COMPILE_FLAGS "-O3")
@@ -84,6 +144,7 @@ else()
     # Set sources for main. Note the SHADERS variable, this holds the shaders so 
     # that they appear on the VS project for editing.
     add_executable(App
+        ${INCLUDE_PATH}/OpenGLTF.h
         ${INCLUDE_PATH}/shader.h
         ${SOURCE_PATH}/main.cpp
         ${SHADERS}
@@ -96,6 +157,7 @@ else()
     
     # We need this to be able to compile SHARED/dynamic libraries in Windows.
     if(WIN32)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
         set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
         set(BUILD_SHARED_LIBS TRUE)
     endif()
@@ -104,6 +166,11 @@ else()
     find_package(SDL2 REQUIRED)
     find_package(OpenGL REQUIRED)
 
+    # Link SDL to ImGui
+    target_link_libraries(imgui PUBLIC
+        SDL2::SDL2 
+        SDL2::SDL2main
+    )
 
     # Add GLAD sources
     add_library(glad STATIC
@@ -115,35 +182,6 @@ else()
         ${INCLUDE_PATH}
     )
 
-    # Add imgui
-    set(IMGUI_PATH ${SUBMODULES_PATH}/imgui)
-    set(IMGUI_SRC
-        ${IMGUI_PATH}/imgui.h
-        ${IMGUI_PATH}/imgui.cpp
-        ${IMGUI_PATH}/imgui_demo.cpp
-        ${IMGUI_PATH}/imgui_draw.cpp
-        ${IMGUI_PATH}/imgui_tables.cpp
-        ${IMGUI_PATH}/imgui_widgets.cpp
-        ${IMGUI_PATH}/imgui_demo.cpp
-        ${IMGUI_PATH}/backends/imgui_impl_sdl2.h
-        ${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp
-        ${IMGUI_PATH}/backends/imgui_impl_opengl3.h
-        ${IMGUI_PATH}/backends/imgui_impl_opengl3.cpp
-        ${IMGUI_PATH}/imgui_internal.h
-    )
-    add_library(imgui STATIC
-        ${IMGUI_SRC}
-    )
-
-    target_link_libraries(imgui PUBLIC
-        SDL2::SDL2 
-        SDL2::SDL2main
-    )
-
-    target_include_directories(imgui PUBLIC
-        ${IMGUI_PATH}
-    )
-
     target_link_libraries(App PUBLIC
         SDL2::SDL2 
         SDL2::SDL2main
@@ -151,7 +189,10 @@ else()
         glad
         glm
         tinygltf
+        tinyobjloader
         imgui
+        ImGuizmo
+        nanort
     )
 
     # Set Windows-specific properties
@@ -168,16 +209,17 @@ else()
             $<TARGET_FILE_DIR:SDL2::SDL2>/SDL2.dll
             $<TARGET_FILE_DIR:App>
         )
+        #message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
         # Create a shaders folder on the build folder.
         add_custom_command(TARGET App POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:App>/shaders
+            ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
         )
         # Copy shaders to build folder so that the .exe runs on Windows.
         add_custom_command(TARGET App POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${SHADERS}
-            $<TARGET_FILE_DIR:App>/shaders
+            ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
         )
     endif()
 endif()

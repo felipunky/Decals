@@ -68,7 +68,7 @@
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
 
-//#include "ImGuizmo.h"
+#include "ImGuizmo.h"
 
 #include <iostream>
 #include <functional>
@@ -83,7 +83,14 @@
     #include <glad/glad.h>
     #define EMSCRIPTEN_KEEPALIVE
 #endif
+
+#include "nanort.h"
+
 #include "shader.h"
+#include "OpenGLTF.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
 
 using namespace std;
 
@@ -101,7 +108,10 @@ const int SCREEN_HEIGHT = 480;
 bool init();
 
 // Initialize imgui.
-void initImgui();
+ImGuiIO initImgui();
+
+// Transform ImGuizmo helper function.
+extern "C" void EMSCRIPTEN_KEEPALIVE editTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition, ImGuiIO& io);
 
 // Main loop, we need this given that we are targeting multiple platforms.
 void main_loop();
@@ -112,14 +122,37 @@ const char* glsl_version = "#version 300 es";
 static bool main_loop_running = true;
 static bool show_demo_window = true;
 
+// Setup Dear ImGui context
+//ImGuiIO& io = ImGui::GetIO();
+static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
+static bool useWindow = false;
+
+glm::mat4 model = glm::mat4(1);
+glm::mat4 view = glm::mat4(1);
+glm::mat4 projectionHalf = glm::mat4(1);
+int lastUsing = 0;
+
 int main()
 {
+    // NanoRT
+    nanort::Ray<float> ray;
+    ray.org[0] = 0.0f;
+    ray.org[1] = 1.0f;
+    ray.org[2] = 2.0f;
+
+    ray.dir[0] = 0.0f;
+    ray.dir[1] = 1.0f;
+    ray.dir[2] = 2.0f;
+
+    float kFar = 1.0e+30f;
+    ray.min_t = 0.0f;
+    ray.max_t = kFar;
     if (!init())
     {
         return -1;
     }
 
-    initImgui();
+    ImGuiIO io = initImgui();
 
     float points[] = {
         0.0f,  0.5f,  0.0f,
@@ -154,12 +187,13 @@ int main()
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
+    #ifdef __EMSCRIPTEN__
     Shader shader = Shader("shaders/vertex.glsl", "shaders/fragment.glsl");
     shader.use();
-
-    #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(main_loop, 0, true);
     #else
+    Shader shader = Shader("../shaders/vertex.glsl", "../shaders/fragment.glsl");
+    shader.use();
     while (main_loop_running)
     {
         main_loop();
@@ -228,7 +262,7 @@ bool init()
     return true;
 }
 
-void initImgui()
+ImGuiIO initImgui()
 {
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -245,6 +279,109 @@ void initImgui()
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
+
+    return io;
+}
+
+void editTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition, ImGuiIO& io)
+{
+    ImGuizmo::SetRect(0, 0, io.DisplaySize.x / 2, io.DisplaySize.y);
+    static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::LOCAL);
+    static bool useSnap = false;
+    static float snap[3] = { 1.f, 1.f, 1.f };
+    static float bounds[] = { -0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f };
+    static float boundsSnap[] = { 0.1f, 0.1f, 0.1f };
+    static bool boundSizing = false;
+    static bool boundSizingSnap = false;
+
+    if (editTransformDecomposition)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_T))
+            mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_R))
+            mCurrentGizmoOperation = ImGuizmo::ROTATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_E))
+            mCurrentGizmoOperation = ImGuizmo::SCALE;
+        if (ImGui::RadioButton("Translate", mCurrentGizmoOperation == ImGuizmo::TRANSLATE))
+            mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Rotate", mCurrentGizmoOperation == ImGuizmo::ROTATE))
+            mCurrentGizmoOperation = ImGuizmo::ROTATE;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Scale", mCurrentGizmoOperation == ImGuizmo::SCALE))
+            mCurrentGizmoOperation = ImGuizmo::SCALE;
+        if (ImGui::RadioButton("Universal", mCurrentGizmoOperation == ImGuizmo::UNIVERSAL))
+            mCurrentGizmoOperation = ImGuizmo::UNIVERSAL;
+        float matrixTranslation[3], matrixRotation[3], matrixScale[3];
+        ImGuizmo::DecomposeMatrixToComponents(matrix, matrixTranslation, matrixRotation, matrixScale);
+        ImGui::InputFloat3("Tr", matrixTranslation);
+        ImGui::InputFloat3("Rt", matrixRotation);
+        ImGui::InputFloat3("Sc", matrixScale);
+        ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, matrix);
+
+        if (mCurrentGizmoOperation != ImGuizmo::SCALE)
+        {
+            if (ImGui::RadioButton("Local", mCurrentGizmoMode == ImGuizmo::LOCAL))
+                mCurrentGizmoMode = ImGuizmo::LOCAL;
+            ImGui::SameLine();
+            if (ImGui::RadioButton("World", mCurrentGizmoMode == ImGuizmo::WORLD))
+                mCurrentGizmoMode = ImGuizmo::WORLD;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_P))
+            useSnap = !useSnap;
+        ImGui::Checkbox("##UseSnap", &useSnap);
+        ImGui::SameLine();
+
+        switch (mCurrentGizmoOperation)
+        {
+        case ImGuizmo::TRANSLATE:
+            ImGui::InputFloat3("Snap", &snap[0]);
+            break;
+        case ImGuizmo::ROTATE:
+            ImGui::InputFloat("Angle Snap", &snap[0]);
+            break;
+        case ImGuizmo::SCALE:
+            ImGui::InputFloat("Scale Snap", &snap[0]);
+            break;
+        default:
+            break;
+        }
+        ImGui::Checkbox("Bound Sizing", &boundSizing);
+        if (boundSizing)
+        {
+            ImGui::PushID(3);
+            ImGui::Checkbox("##BoundSizing", &boundSizingSnap);
+            ImGui::SameLine();
+            ImGui::InputFloat3("Snap", boundsSnap);
+            ImGui::PopID();
+        }
+    }
+
+    //ImGuiIO& io = ImGui::GetIO();
+    float viewManipulateRight = io.DisplaySize.x;
+    float viewManipulateTop = 0;
+    static ImGuiWindowFlags gizmoWindowFlags = 0;
+    if (useWindow)
+    {
+        ImGui::SetNextWindowSize(ImVec2(800, 400), ImGuiCond_Appearing);
+        ImGui::SetNextWindowPos(ImVec2(400, 20), ImGuiCond_Appearing);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, (ImVec4)ImColor(0.35f, 0.3f, 0.3f));
+        ImGui::Begin("Gizmo", 0, gizmoWindowFlags);
+        ImGuizmo::SetDrawlist();
+        float windowWidth = (float)ImGui::GetWindowWidth();
+        float windowHeight = (float)ImGui::GetWindowHeight();
+        ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, windowWidth, windowHeight);
+        viewManipulateRight = ImGui::GetWindowPos().x + windowWidth;
+        viewManipulateTop = ImGui::GetWindowPos().y;
+        ImGuiWindow* window = ImGui::GetCurrentWindow();
+        gizmoWindowFlags = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(window->InnerRect.Min, window->InnerRect.Max) ? ImGuiWindowFlags_NoMove : 0;
+    }
+    else
+    {
+        ImGuizmo::SetRect(0, 0, io.DisplaySize.x / 2, io.DisplaySize.y);
+    }
+    ImGuizmo::Manipulate(cameraView, cameraProjection, mCurrentGizmoOperation, mCurrentGizmoMode, matrix, NULL, useSnap ? &snap[0] : NULL, boundSizing ? bounds : NULL, boundSizingSnap ? boundsSnap : NULL);
+    std::cout << "Edit transform!" << std::endl;
 }
 
 void mouse_press(SDL_MouseButtonEvent& button)
@@ -290,15 +427,29 @@ void main_loop()
     }
 
     // imgui
-    // Start the Dear ImGui frame
+    // Start the Dear ImGui and ImGuizmo frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
-    if (show_demo_window)
+    ImGuizmo::BeginFrame();
+    
+    ImGui::Begin("GUI");
+    if (ImGui::Button("Hey"))
     {
-        ImGui::ShowDemoWindow(&show_demo_window);
-    }
-    ImGui::Render();
+        show_demo_window = !show_demo_window;
+    }    
+
+    /*for (int i = 0; i < 1; ++i)
+    {
+        ImGuizmo::SetID(i);
+        editTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(model), lastUsing == i, io);
+        if (ImGuizmo::IsUsing())
+        {
+            lastUsing = i;
+        }
+    }*/
+
+    ImGui::End();
 
     // Clear the screen
     if( background_is_black )
@@ -314,6 +465,7 @@ void main_loop()
     // Draw a triangle from the 3 vertices
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
+    ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(window);
 }
