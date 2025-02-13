@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <script src="wasm-arrays.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <!-- Create the canvas that the C++ code will draw into -->
+    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <!-- <canvas id="canvasDrawImag" oncontextmenu="event.preventDefault()"></canvas> -->
+    <div>
+        <!-- <input type="file" id="objPicker" accept=".obj"> -->
+    </div>
+    <script type='text/javascript'>
+        var canv = document.getElementById('canvas');
+        var Module = 
+        {
+            canvas: canv
+        };
+        let previewCanvasContext;
+        let img;
+        let cv;
+        let clicked = 0;
+        let sizeData = [0, 0, 0];
+        let downloadImage = 0;
+        let widthDecal  = 1024;
+        let heightDecal = 1024;
+        let flipOnDownload = 0;
+        let res;
+        let cvDrawImg;
+        let meshData;
+        let flipAlbedo = 0;
+        let isGLTF = false;
+        let original = false;
+        window.onload = function()
+        {   
+            const loadImage = src => 
+            {
+                img = new Image()
+                img.addEventListener("load", () => 
+                {
+                    cv = document.createElement("canvas");
+                    cv.id = "previewCanvas";
+                    cv.height = img.height;
+                    cv.width = img.width;
+                    clicked = 1;
+
+                    sizeData = [cv.width, cv.height, clicked];
+
+                    previewCanvasContext = cv.getContext("2d");
+                    previewCanvasContext.drawImage(img, 0, 0);
+
+                    //console.log("Passing image data to WASM");
+
+                    passToWASM();
+                })
+                img.src = src;
+            }
+
+            const loadImageAlbedo = src => 
+            {
+                let imgAlbedo = new Image()
+                imgAlbedo.addEventListener("load", () => 
+                {
+                    cv = document.createElement("canvas");
+                    cv.id = "previewCanvas";
+                    cv.height = imgAlbedo.height;
+                    cv.width = imgAlbedo.width;
+                    widthDecal = cv.width;
+                    heightDecal = cv.height;
+                    flipAlbedo = 1;
+                    sizeData = [cv.width, cv.height, flipAlbedo];
+
+                    previewCanvasContext = cv.getContext("2d");
+                    previewCanvasContext.drawImage(imgAlbedo, 0, 0);
+
+                    //console.log("Passing Albedo image data to WASM");
+
+                    const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
+                    ccallArrays("passSizeAlbedo", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
+                    ccallArrays("loadAlbedo", null, ["array"], [imageData], {heapIn: "HEAPU8"});
+                    //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
+                    sizeData[2] = clicked;
+                    //console.log("You are loading the Albedo texture...");
+                    flipAlbedo = isGLTF ? 0 : 1;
+                });
+                imgAlbedo.src = src;
+            }
+
+            const loadImageNormal = src => 
+            {
+                let imgNormal = new Image()
+                imgNormal.addEventListener("load", () => 
+                {
+                    cv = document.createElement("canvas");
+                    cv.id = "previewCanvas";
+                    cv.height = imgNormal.height;
+                    cv.width = imgNormal.width;
+                    let sizeDataNormal = [cv.width, cv.height];
+
+                    previewCanvasContext = cv.getContext("2d");
+                    previewCanvasContext.drawImage(imgNormal, 0, 0);
+
+                    //console.log("Passing Normal image data to WASM");
+
+                    const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
+                    ccallArrays("passSizeNormal", null, ["array"], [sizeDataNormal], {heapIn: "HEAPU16"});
+                    ccallArrays("loadNormal", null, ["array"], [imageData], {heapIn: "HEAPU8"});
+                    //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
+                });
+                imgNormal.src = src;
+            }
+
+            function passToWASM()
+            {
+                const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
+                ccallArrays("passSize", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
+                ccallArrays("load", null, ["array"], [imageData], {heapIn: "HEAPU8"});
+                //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
+                clicked = 0;
+                sizeData[2] = clicked;
+            } 
+
+            // Image input
+            const fileInput = document.getElementById("fileInput");
+            fileInput.addEventListener("change", () => {
+                loadImage(URL.createObjectURL(event.target.files[0]))
+            })
+
+            function flip(imageData, ctx)
+            {
+                // first put the imageData
+                ctx.putImageData(imageData, 0,0);
+                // because we've got transparency
+                ctx.globalCompositeOperation = 'copy';
+                ctx.scale(1,-1); // Y flip
+                ctx.translate(0, -imageData.height); // so we can draw at 0,0
+                ctx.drawImage(cvDrawImg, 0,0);
+                // now we can restore the context to defaults if needed
+                ctx.setTransform(1,0,0,1,0,0);
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            var drawArray = function(arr, width, height) 
+            {
+                cvDrawImg = document.createElement("canvas");
+                cvDrawImg.id = "canvasDrawImag";
+                cvDrawImg.width  = widthDecal;
+                cvDrawImg.height = heightDecal;
+
+                var ctx = cvDrawImg.getContext('2d');
+                // create the imageData object, you'll need the width and height of your image
+                var dataImage = ctx.createImageData(width, height);
+                // browsers supporting TypedArrays
+                if (dataImage.data.set) 
+                {
+                    dataImage.data.set(arr);
+                } 
+                else 
+                {
+                    // IE9
+                    arr.forEach(function(val, i) {
+                    dataImage.data[i] = val;
+                    });
+                }
+                if (flipAlbedo != 0)
+                {
+                    ctx.putImageData(dataImage, 0,0);
+                    ctx.drawImage(cvDrawImg, 0,0);    
+                }
+                else 
+                {
+                    flip(dataImage, ctx);
+                }
+            };
+
+            function UpdateTexture()
+            {
+                let downloadImageArr = [downloadImage, 1, 2];
+                _flipDecalTrigger();
+            }
+            function ViewTexture()
+            {
+                let downloadImageArray = [downloadImage, 2, 3];
+                res = ccallArrays("downloadDecal", "array", ["array"], [downloadImageArray], 
+                                  {heapIn: "HEAPU8", heapOut: "HEAPU8", returnArraySize: 4 * widthDecal * heightDecal});
+            }
+
+            window.oncontextmenu = function(e) 
+            {
+                e.preventDefault();
+                downloadImage = 1;
+                UpdateTexture();
+            }
+
+            // Albedo input
+            // Image input
+            const albedoInput = document.getElementById("uploadAlbedo");
+            albedoInput.addEventListener("change", () => {
+                loadImageAlbedo(URL.createObjectURL(event.target.files[0]));
+            });
+
+            // Normal input
+            const normalInput = document.getElementById("uploadNormal");
+            normalInput.addEventListener("change", () => {
+                loadImageNormal(URL.createObjectURL(event.target.files[0]));
+            });
+
+            // Obj Input
+            const meshInput = document.getElementById("uploadMesh");
+            meshInput.addEventListener("change", () => 
+            {
+                readFile(event.target.files[0]);
+                isGLTF = false;
+                //console.log(isGLTF);
+            });
+
+            async function readFile(file)
+            {
+                const text = await file.text();
+                
+                var buffer = _malloc(text.length + 1);
+                stringToUTF8(text, buffer, text.length + 1);
+                ccall("passObj", "null", ["number"], [buffer]);
+                _free(buffer);
+            }
+
+            // GLTF Input
+            const gltfInput = document.getElementById("uploadGLTF");
+            gltfInput.addEventListener("change", () =>{
+                readGLTFFile(event.target.files[0]);
+                isGLTF = true;
+                flipAlbedo = 0;
+                //console.log(isGLTF);
+            });
+
+            async function readGLTFFile(file)
+            {
+                const text = await file.text();
+
+                var buffer = _malloc(text.length + 1);
+                stringToUTF8(text, buffer, text.length + 1);
+                ccall("passGLTF", "null", ["number"], [buffer]);
+                _free(buffer);
+            }
+
+            document.getElementById('download').addEventListener("click", function(e) 
+            {
+                // Base Color.
+                ViewTexture();
+                drawArray(res, widthDecal, heightDecal);
+                var dataURL = cvDrawImg.toDataURL("image/png", 1.0);
+                var a = document.createElement('a');
+                a.href = dataURL;
+                a.download = 'Albedo.png';
+                document.body.appendChild(a);
+                a.click();
+
+                /*
+                // Roughness.
+                a.href = "Assets/t-shirt-lp/textures/T_shirt_roughness.jpg";
+                a.download = "T_shirt_roughness.jpg";
+                a.click();
+
+                // Normals.
+                a.href = "Assets/t-shirt-lp/textures/T_shirt_normal.png";
+                a.download = "T_shirt_normal.png";
+                a.click();
+
+                // Ambient Occlusion.
+                a.href = "Assets/t-shirt-lp/textures/T_shirt_AO.jpg";
+                a.download = "T_shirt_AO.jpg";
+                a.click();
+
+                // Mesh.
+                downloadUrl("Assets/t-shirt-lp/source/Shirt.gltf");*/
+            });
+
+            function downloadUrl(url)
+            {
+                window.open(url, '_self');
+            }
+
+            function downloadImage(url, name)
+            {
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+            }
+        }
+    </script>
+    <!-- Call the javascript glue code (index.js) as generated by Emscripten -->
+    <script src="App.js"></script>
+    
+    <!-- Allow the javascript to call C++ functions -->
+    <script type='text/javascript'>
+        //canv.addEventListener('click',    _toggle_background_color, false);
+        //canv.addEventListener('touchend', _toggle_background_color, false);
+    </script>
+
+</body>
+<button class="button" style="display: inline; height:30px;" onclick="document.getElementById('fileInput').click()">Upload Image for Decal</button>
+<button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadAlbedo').click()">Upload Image for Albedo</button>
+<input id="fileInput" style="display:none" type="file" accept="image/*" value="./image.png">
+<button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadNormal').click()">Upload Image for Normal</button>
+<!-- <input id="fileInput" style="display:none" type="file" accept="image/*" value="./image.png"> -->
+<button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadMesh').click()">Upload OBJ</button>
+<button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadGLTF').click()">Upload GLTF</button>
+<input id="uploadMesh" style="display:none" type="file" accept=".obj">
+<input id="uploadGLTF" style="display:none" type="file" accept=".gltf">
+<input id="uploadAlbedo" style="display:none" type="file" accept="image/*" value="./image.png">
+<input id="uploadNormal" style="display:none" type="file" accept="image/*" value="./image.png">
+<button class="button" style="display: inline; height:30px;" id="download">Download</button>
+</html>

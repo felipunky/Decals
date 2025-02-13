@@ -13,7 +13,9 @@
 #define GL_GLEXT_PROTOTYPES 1
 
 #define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_RADIANS
 #define GLM_FORCE_SWIZZLE
+//#define GLM_SWIZZLE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -32,7 +34,7 @@
 #if 0
     #define EXCEPTIONS
 #endif
-#if 1
+#if 0
 	#define OPTIMIZE
 #endif
 

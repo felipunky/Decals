@@ -15,32 +15,83 @@ set(SUBMODULES_PATH ${PROJECT_SOURCE_DIR}/submodules)
 # Shaders
 set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
 
-# Add GLM
-add_subdirectory(${SUBMODULES_PATH}/glm)
+# Add subdirectory based lib generation. It compiles examples
+# we don't want this. 
+option(BASED_ON_SUBDIRECTORY "Use existing CMakeLists.txt from each submodule" OFF)
 
-# Add tinyGLTF
-add_subdirectory(${SUBMODULES_PATH}/tinygltf)
-#set(TINYGLTF_PATH ${SUBMODULES_PATH}/tinygltf)
-#add_library(tinygltf STATIC
-#    ${TINYGLTF_PATH}/tiny_gltf.h
-#    ${TINYGLTF_PATH}/tiny_gltf.cc
-#)
-#target_include_directories(tinygltf PUBLIC
-#    ${TINYGLTF_PATH}
-#)
+# Try and compile the original project to EMCC
+option(ORIGINAL_PROJECT "Compile original project" ON)
 
-# Add tinyobjloader
-add_subdirectory(${SUBMODULES_PATH}/tinyobjloader)
-#set(TINYOBJLOADER_PATH ${SUBMODULES_PATH}/tinyobjloader)
-#add_library(tinyobjloader STATIC
-#    ${TINYOBJLOADER_PATH}/tiny_obj_loader.h
-#    ${TINYOBJLOADER_PATH}/tiny_obj_loader.cc
-#)
-#target_include_directories(tinyobjloader PUBLIC
-#    ${TINYOBJLOADER_PATH}
-#)
+if(BASED_ON_SUBDIRECTORY)
+    # Add GLM
+    add_subdirectory(${SUBMODULES_PATH}/glm)
 
-# Add imgui
+    # Add tinyGLTF
+    add_subdirectory(${SUBMODULES_PATH}/tinygltf)
+
+    # Add tinyobjloader
+    add_subdirectory(${SUBMODULES_PATH}/tinyobjloader)
+
+    # NanoRT
+    add_subdirectory(${SUBMODULES_PATH}/nanort)
+
+else()
+    # Add GLM
+    set(GLM_PATH ${SUBMODULES_PATH}/glm)
+    set(GLM_SOURCE
+        ${GLM_PATH}/glm/glm.hpp
+        ${GLM_PATH}/glm/gtc/matrix_transform.hpp
+        ${GLM_PATH}/glm/gtc/type_ptr.hpp
+        ${GLM_PATH}/glm/gtx/hash.hpp
+        ${GLM_PATH}/glm/gtx/string_cast.hpp
+    )
+    # Note the INTERFACE param given it's header only.
+    add_library(glm INTERFACE
+        ${GLM_SOURCE}
+    )
+    target_include_directories(glm INTERFACE
+        ${GLM_PATH}
+    )
+
+    # Add tinyGLTF
+    set(TINYGLTF_PATH ${SUBMODULES_PATH}/tinygltf)
+    set(TINYGLTF_SOURCE
+        ${TINYGLTF_PATH}/tiny_gltf.h
+        ${TINYGLTF_PATH}/tiny_gltf.cc
+    )
+    add_library(tinygltf STATIC
+        ${TINYGLTF_SOURCE}
+    )
+    target_include_directories(tinygltf PUBLIC
+        ${TINYGLTF_PATH}
+    )
+
+    # Add tinyobjloader
+    set(TINYOBJLOADER_PATH ${SUBMODULES_PATH}/tinyobjloader)
+    set(TINYOBJLOADER_SOURCE
+        ${TINYOBJLOADER_PATH}/tiny_obj_loader.h
+        ${TINYOBJLOADER_PATH}/tiny_obj_loader.cc
+    )
+    add_library(tinyobjloader STATIC
+        ${TINYOBJLOADER_SOURCE}
+    )
+    target_include_directories(tinyobjloader PUBLIC
+        ${TINYOBJLOADER_PATH}
+    )
+
+    # Add NanoRT
+    set(NANORT_PATH ${SUBMODULES_PATH}/nanort)
+    add_library(nanort STATIC
+        ${NANORT_PATH}/nanort.h
+        ${NANORT_PATH}/nanort.cc
+    )
+    target_include_directories(nanort PUBLIC
+        ${NANORT_PATH}
+    )
+endif()
+# The following libs don't provide CMakeLists.txt's out of the box.
+
+# Add ImGui
 set(IMGUI_PATH ${SUBMODULES_PATH}/imgui)
 set(IMGUI_SRC
     ${IMGUI_PATH}/imgui.h
@@ -75,17 +126,6 @@ target_include_directories(ImGuizmo PUBLIC
     ${IMGUIZMO_PATH}
 )
 
-# Add NanoRT
-#add_subdirectory(${SUBMODULES_PATH}/nanort)
-set(NANORT_PATH ${SUBMODULES_PATH}/nanort)
-add_library(nanort STATIC
-    ${NANORT_PATH}/nanort.h
-    ${NANORT_PATH}/nanort.cc
-)
-target_include_directories(nanort PUBLIC
-    ${NANORT_PATH}
-)
-
 #file(GLOB_RECURSE HS "${INCLUDE_PATH}/*.h")
 #MESSAGE(STATUS "HS: ${HS}")
 # file(GLOB_RECURSE CPPS "${SOURCE_PATH}/*.cpp")
@@ -94,11 +134,19 @@ if(DEFINED EMSCRIPTEN)
     message(STATUS "This is an EMSCRIPTEN build!")
 
     # Set sources for main
-    add_executable(App
-        ${INCLUDE_PATH}/OpenGLTF.h
-        ${INCLUDE_PATH}/shader.h
-        ${SOURCE_PATH}/main.cpp
-    )
+    if(ORIGINAL_PROJECT)
+        add_executable(App
+            ${INCLUDE_PATH}/OpenGLTF.h
+            ${INCLUDE_PATH}/shader.h
+            ${SOURCE_PATH}/mainOne.cpp
+        )
+    else()
+        add_executable(App
+            ${INCLUDE_PATH}/OpenGLTF.h
+            ${INCLUDE_PATH}/shader.h
+            ${SOURCE_PATH}/main.cpp
+        )
+    endif()
 
     # Set includes for main
     target_include_directories(App PUBLIC
@@ -121,11 +169,60 @@ if(DEFINED EMSCRIPTEN)
         nanort
     )
 
-    set_target_properties(App PROPERTIES COMPILE_FLAGS "-O3")
-	set_target_properties(App PROPERTIES LINK_FLAGS    "-O3 -s WASM=1 -s FULL_ES3=1 -s GL_DEBUG=1 -s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 --embed-file ${PROJECT_SOURCE_DIR}/shaders@/shaders -s ASSERTIONS")
+    set(SHADERS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/shaders@/shaders)
+    set(ASSETS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/Assets@/Assets)
+    
+    # Runtime modules.
+    set(RUNTIME_MODULES         "-s EXPORTED_FUNCTIONS=\"['_main','_malloc','_free']\" ")
+    list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=\"['ccall']\"")
+    #[[list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=[")
+    list(APPEND RUNTIME_MODULES "\"ccall\",")
+    list(APPEND RUNTIME_MODULES "\"_malloc\"")
+    list(APPEND RUNTIME_MODULES "] ")]]
+    list(JOIN RUNTIME_MODULES "" RUNTIME_MODULES)
+
+    MESSAGE(STATUS "RUNTIME_MODULES ${RUNTIME_MODULES}")
+
+    # Emscripten Compile and Link flags.
+    set(EMSCRIPTEN_OPTIMIZATION_LEVEL "-O3 ")
+    set(EMSCRIPTEN_FLAGS "")
+    list(APPEND EMSCRIPTEN_FLAGS ${EMSCRIPTEN_OPTIMIZATION_LEVEL})
+    list(APPEND EMSCRIPTEN_FLAGS "-s WASM=1 ")
+    list(APPEND EMSCRIPTEN_FLAGS "-s FULL_ES3=1 ")
+    list(APPEND EMSCRIPTEN_FLAGS "-s GL_DEBUG=1 ")
+    list(APPEND EMSCRIPTEN_FLAGS "-s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 ")
+    list(APPEND EMSCRIPTEN_FLAGS "--embed-file ${SHADERS_PATH_EMSCRIPTEN} ")
+    list(APPEND EMSCRIPTEN_FLAGS "--preload-file ${ASSETS_PATH_EMSCRIPTEN} ")
+    list(APPEND EMSCRIPTEN_FLAGS "-s FORCE_FILESYSTEM=1 ")
+    list(APPEND EMSCRIPTEN_FLAGS "-s ALLOW_MEMORY_GROWTH=1 ")
+    list(APPEND EMSCRIPTEN_FLAGS ${RUNTIME_MODULES})
+    list(APPEND EMSCRIPTEN_FLAGS "-s ASSERTIONS=1")
+    list(JOIN EMSCRIPTEN_FLAGS " " EMSCRIPTEN_FLAGS)
+
+    MESSAGE(STATUS "EMSCRIPTEN_FLAGS ${EMSCRIPTEN_FLAGS}")
+
+    set_target_properties(App PROPERTIES COMPILE_FLAGS ${EMSCRIPTEN_OPTIMIZATION_LEVEL})
+    set_target_properties(App PROPERTIES LINK_FLAGS    ${EMSCRIPTEN_FLAGS})
+
+    #set_target_properties(App PROPERTIES COMPILE_FLAGS "-03")
+	#set_target_properties(App PROPERTIES LINK_FLAGS    "-O3 -s WASM=1 -s FULL_ES3=1 -s GL_DEBUG=1 -s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 --embed-file '${SHADERS_PATH_EMSCRIPTEN}' --preload-file '${ASSETS_PATH_EMSCRIPTEN}' -s ASSERTIONS")
 
     # Add index.html to the wasm build folder.
-    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/index.html
+    if(ORIGINAL_PROJECT)
+        file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/indexOne.html
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+        )
+    else()
+        file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/index.html
+            DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+        )
+    endif()
+    # Add wasm-arrays.js to the wasm build folder.
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/wasm-arrays.min.js
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    # Add styles.css to the wasm build folder.
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/styles.css
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
     )
 
