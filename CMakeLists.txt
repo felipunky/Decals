@@ -9,6 +9,8 @@ project(
 # add_definitions(-std=c++17)
 set(CMAKE_CXX_STANDARD 17)
 
+set(PROJECT_NAME "App")
+
 set(SOURCE_PATH ${PROJECT_SOURCE_DIR}/src)
 set(INCLUDE_PATH ${PROJECT_SOURCE_DIR}/include)
 set(SUBMODULES_PATH ${PROJECT_SOURCE_DIR}/submodules)
@@ -17,10 +19,15 @@ set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
 
 # Add subdirectory based lib generation. It compiles examples
 # we don't want this. 
-option(BASED_ON_SUBDIRECTORY "Use existing CMakeLists.txt from each submodule" OFF)
+option(BASED_ON_SUBDIRECTORY "Use existing CMakeLists.txt from each submodule. This has the issue that it creates the test projects from each submodule." OFF)
 
 # Try and compile the original project to EMCC
 option(ORIGINAL_PROJECT "Compile original project" ON)
+if(ORIGINAL_PROJECT)
+    set(MAIN_SRC ${SOURCE_PATH}/main.cpp)
+else()
+    set(MAIN_SRC ${SOURCE_PATH}/mainOne.cpp)
+endif()
 
 if(BASED_ON_SUBDIRECTORY)
     # Add GLM
@@ -135,21 +142,21 @@ if(DEFINED EMSCRIPTEN)
 
     # Set sources for main
     if(ORIGINAL_PROJECT)
-        add_executable(App
+        add_executable(${PROJECT_NAME}
             ${INCLUDE_PATH}/OpenGLTF.h
             ${INCLUDE_PATH}/shader.h
             ${SOURCE_PATH}/mainOne.cpp
         )
     else()
-        add_executable(App
+        add_executable(${PROJECT_NAME}
             ${INCLUDE_PATH}/OpenGLTF.h
             ${INCLUDE_PATH}/shader.h
-            ${SOURCE_PATH}/main.cpp
+            ${MAIN_SRC}
         )
     endif()
 
     # Set includes for main
-    target_include_directories(App PUBLIC
+    target_include_directories(${PROJECT_NAME} PUBLIC
         ${INCLUDE_PATH}
     )
 
@@ -160,7 +167,7 @@ if(DEFINED EMSCRIPTEN)
     set(CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS})
     set(CMAKE_EXECUTABLE_SUFFIX .js)
 
-    target_link_libraries(App PUBLIC
+    target_link_libraries(${PROJECT_NAME} PUBLIC
         glm
         tinygltf
         tinyobjloader
@@ -201,11 +208,11 @@ if(DEFINED EMSCRIPTEN)
 
     MESSAGE(STATUS "EMSCRIPTEN_FLAGS ${EMSCRIPTEN_FLAGS}")
 
-    set_target_properties(App PROPERTIES COMPILE_FLAGS ${EMSCRIPTEN_OPTIMIZATION_LEVEL})
-    set_target_properties(App PROPERTIES LINK_FLAGS    ${EMSCRIPTEN_FLAGS})
+    set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS ${EMSCRIPTEN_OPTIMIZATION_LEVEL})
+    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS    ${EMSCRIPTEN_FLAGS})
 
-    #set_target_properties(App PROPERTIES COMPILE_FLAGS "-03")
-	#set_target_properties(App PROPERTIES LINK_FLAGS    "-O3 -s WASM=1 -s FULL_ES3=1 -s GL_DEBUG=1 -s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 --embed-file '${SHADERS_PATH_EMSCRIPTEN}' --preload-file '${ASSETS_PATH_EMSCRIPTEN}' -s ASSERTIONS")
+    #set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "-03")
+	#set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS    "-O3 -s WASM=1 -s FULL_ES3=1 -s GL_DEBUG=1 -s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 --embed-file '${SHADERS_PATH_EMSCRIPTEN}' --preload-file '${ASSETS_PATH_EMSCRIPTEN}' -s ASSERTIONS")
 
     # Add index.html to the wasm build folder.
     if(ORIGINAL_PROJECT)
@@ -235,20 +242,20 @@ else()
     # Pass the shaders as a header for the VS project to recognize them.
     set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
     # Copy shaders to build folder so that the .exe runs on Windows.
-    #set(shaders $<TARGET_FILE_DIR:App>/shaders)
+    #set(shaders $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders)
     #file(COPY ${SHADERS} DESTINATION shaders)
 
     # Set sources for main. Note the SHADERS variable, this holds the shaders so 
     # that they appear on the VS project for editing.
-    add_executable(App
+    add_executable(${PROJECT_NAME}
         ${INCLUDE_PATH}/OpenGLTF.h
         ${INCLUDE_PATH}/shader.h
-        ${SOURCE_PATH}/main.cpp
+        ${MAIN_SRC}
         ${SHADERS}
     )
 
     # Set includes for main
-    target_include_directories(App PUBLIC
+    target_include_directories(${PROJECT_NAME} PUBLIC
         ${INCLUDE_PATH}
     )
     
@@ -279,7 +286,7 @@ else()
         ${INCLUDE_PATH}
     )
 
-    target_link_libraries(App PUBLIC
+    target_link_libraries(${PROJECT_NAME} PUBLIC
         SDL2::SDL2 
         SDL2::SDL2main
         OpenGL::GL
@@ -295,25 +302,25 @@ else()
     # Set Windows-specific properties
     if(WIN32)
         add_definitions(-DWIN32_LEAN_AND_MEAN)
-        target_compile_definitions(App PRIVATE SDL_MAIN_HANDLED)  # Needed to avoid WinMain issues
+        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)  # Needed to avoid WinMain issues
     endif()
 
     # Windows only
     if(WIN32)
         # Copy SDL2.dll to the output directory on Windows
-        add_custom_command(TARGET App POST_BUILD
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE_DIR:SDL2::SDL2>/SDL2.dll
-            $<TARGET_FILE_DIR:App>
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
         #message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
         # Create a shaders folder on the build folder.
-        add_custom_command(TARGET App POST_BUILD
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
         )
         # Copy shaders to build folder so that the .exe runs on Windows.
-        add_custom_command(TARGET App POST_BUILD
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${SHADERS}
             ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders

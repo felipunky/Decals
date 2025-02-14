@@ -262,9 +262,6 @@ public:
             auto format = GL_RGBA;
 			glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, buffer);
 			glGenerateMipmap(GL_TEXTURE_2D);
-            
-            // Clear the data.
-            free(buffer);
 
             // Bind the uniform sampler.
             // Bind the uniform sampler.

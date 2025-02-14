@@ -56,17 +56,18 @@ static bool show_demo_window = true;
 int newVerticesSize;
 int flipAlbedo = 0;
 uint8_t reload = 0u;
-uint8_t downloadImage = 0u;
+uint8_t downloadImage = 1u;
 std::vector<uint8_t> decalImageBuffer;
 std::vector<uint8_t> decalResult;
 uint16_t widthDecal = 1127u, heightDecal = 699u, changeDecal = 1u,
          widthAlbedo,        heightAlbedo,       changeAlbedo = 0u;
 int flip = 0;
 bool flipDecal = false;
-Shader geometryPass = Shader(),
+Shader depthPrePass = Shader(),
+       geometryPass = Shader(),
+       deferredPass = Shader(),
+       hitPosition  = Shader(),
        decalsPass   = Shader();
-unsigned int renderAlbedo;
-unsigned int fbo;
 
 float near          = 0.1f;
 float far           = 200.0f;
@@ -121,6 +122,15 @@ struct Material
     unsigned int decalBaseColor;
 };
 
+struct frameBuffer
+{
+    unsigned int framebuffer;
+    unsigned int texture;
+};
+
+frameBuffer depthFramebuffer;
+frameBuffer textureSpaceFramebuffer;
+
 void clearBBox(glm::vec3& bboxMin, glm::vec3& bboxMax, glm::vec3& centroid)
 {
     bboxMin  = glm::vec3(1e+5);
@@ -132,6 +142,7 @@ Material material;
 
 bool isGLTF = false;
 
+// We need this so that we don't need to add each module to the Emscripten build.
 extern "C"
 {
     EMSCRIPTEN_KEEPALIVE
@@ -225,17 +236,17 @@ extern "C"
         #else
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
         #endif
-        glDeleteTextures(1, &renderAlbedo);
+        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
         glDeleteTextures(1, &(material.baseColor));
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &renderAlbedo);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glGenTextures(1, &(textureSpaceFramebuffer.texture));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
         
         #ifdef OPTIMIZE
         #else
@@ -270,17 +281,17 @@ extern "C"
         #else
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
         #endif
-        glDeleteTextures(1, &renderAlbedo);
+        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
         glDeleteTextures(1, &(material.normal));
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &renderAlbedo);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glGenTextures(1, &(textureSpaceFramebuffer.texture));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
 
         geometryPass.Width  = width;
         geometryPass.Height = height;
@@ -1347,6 +1358,108 @@ bool init()
     return true;
 }
 
+ImGuiIO initImgui()
+{
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
+    // You may manually call LoadIniSettingsFromMemory() to load settings from your own storage.
+    io.IniFilename = NULL;
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL2_InitForOpenGL(window, context);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+
+    return io;
+}
+
+void initializeShaderSource()
+{
+    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag");   
+    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag");   
+    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag");
+    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag");
+    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag");
+}
+
+frameBuffer createAndAttachDepthPrePassRbo()
+{
+    /** Start Depth Buffer **/
+    frameBuffer depthFramebuffer;
+    glGenFramebuffers(1, &(depthFramebuffer.framebuffer));
+    glBindFramebuffer(GL_FRAMEBUFFER, (depthFramebuffer.framebuffer));
+
+    depthPrePass.use();
+
+    // create and attach depth buffer (renderbuffer)
+    glGenTextures(1, &(depthFramebuffer.texture));
+    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthFramebuffer.texture, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) 
+    {
+        std::cerr << "Framebuffer configuration failed" << std::endl;
+    }
+
+    unsigned int attachments[1] = {GL_NONE};
+    glDrawBuffers(1, attachments);
+    /** End Depth Buffer **/
+    return depthFramebuffer;
+}
+
+frameBuffer createAndAttachTextureSpaceRbo()
+{
+    /** Start Texture Space Buffer **/
+    glGenFramebuffers(1, &(textureSpaceFramebuffer.framebuffer));
+    glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
+
+    geometryPass.use();
+    #ifdef OPTIMIZE
+    #else
+    std::cout << "Albedo Width: "  << geometryPass.Width  << std::endl;
+    std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
+    #endif
+
+    glGenTextures(1, &(textureSpaceFramebuffer.texture));
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
+
+    // Set the list of draw buffers.
+    unsigned int drawBuffersFBO[1] = {GL_COLOR_ATTACHMENT0};
+    glDrawBuffers(1, drawBuffersFBO); // "1" is the size of DrawBuffers
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    deferredPass.use();
+    deferredPass.setInt("gNormal",    0);
+    deferredPass.setInt("gAlbedo",    1);
+    // deferredPass.setInt("gMetallic",  2);
+    // deferredPass.setInt("gRoughness", 3);
+    // deferredPass.setInt("gAO",        4);
+    /** End Texture Space Buffer **/
+    return textureSpaceFramebuffer;
+}
+
 int main()
 {
     #ifdef OPTIMIZE
@@ -1370,21 +1483,7 @@ int main()
     /**
      * Start ImGui
      */
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-    // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
-    // You may manually call LoadIniSettingsFromMemory() to load settings from your own storage.
-    io.IniFilename = NULL;
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplSDL2_InitForOpenGL(window, context);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGuiIO io = initImgui();
     /**
      * End ImGui
      */
@@ -1414,11 +1513,7 @@ int main()
     /**
      * Start Shader Setup
      */
-    Shader depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag");   
-    geometryPass         = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag");   
-    Shader deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag");
-    Shader hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag");
-    decalsPass           = Shader("shaders/Decals.vert",       "shaders/Decals.frag");
+    initializeShaderSource();
     
     //ObjLoader("Assets/t-shirt-lp/source/Shirt.obj");
 
@@ -1481,78 +1576,11 @@ int main()
     /** End Create Decals Texture **/
 
     /** Start Depth Buffer **/
-    unsigned int dBuffer;
-    glGenFramebuffers(1, &dBuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, dBuffer);
-
-    depthPrePass.use();
-
-    unsigned int rboDepth;
-
-    // create and attach depth buffer (renderbuffer)
-    glGenTextures(1, &rboDepth);
-    glBindTexture(GL_TEXTURE_2D, rboDepth);
-    #if 0
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, rboDepth, 0);
-    #else
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, rboDepth, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) 
-    {
-        std::cerr << "Framebuffer configuration failed" << std::endl;
-    }
-    #endif
-
-    unsigned int attachments[1] = {GL_NONE};
-    glDrawBuffers(1, attachments);
-
+    frameBuffer depthFrameBuffer = createAndAttachDepthPrePassRbo();
     /** End Depth Buffer **/
 
     /** Start Texture Space Buffer **/
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-    geometryPass.use();
-    #ifdef OPTIMIZE
-    #else
-    std::cout << "Albedo Width: "  << geometryPass.Width  << std::endl;
-    std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
-    #endif
-
-    glGenTextures(1, &renderAlbedo);
-    glBindTexture(GL_TEXTURE_2D, renderAlbedo);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
-
-    // Set the list of draw buffers.
-    unsigned int drawBuffersFBO[1] = {GL_COLOR_ATTACHMENT0};
-    glDrawBuffers(1, drawBuffersFBO); // "1" is the size of DrawBuffers
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    deferredPass.use();
-    deferredPass.setInt("gNormal",    0);
-    deferredPass.setInt("gAlbedo",    1);
-    // deferredPass.setInt("gMetallic",  2);
-    // deferredPass.setInt("gRoughness", 3);
-    // deferredPass.setInt("gAO",        4);
+    textureSpaceFramebuffer = createAndAttachTextureSpaceRbo();
     /** End Texture Space Buffer **/
 
     /**
@@ -1847,7 +1875,7 @@ int main()
         glEnable(GL_DEPTH_TEST);
         glDepthMask(true);
         glCullFace(GL_BACK);
-        glBindFramebuffer(GL_FRAMEBUFFER, dBuffer); 
+        glBindFramebuffer(GL_FRAMEBUFFER, depthFrameBuffer.framebuffer); 
 
         depthPrePass.use();
         glBindVertexArray(VAO); 
@@ -1866,7 +1894,7 @@ int main()
         /** Start Decal Pass **/
         glEnable(GL_DEPTH_TEST);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
         decalsPass.use();
         decalsPass.setMat4("model", model);
         decalsPass.setMat4("projection", projection);
@@ -1885,7 +1913,7 @@ int main()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, material.decalBaseColor);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, rboDepth);
+        glBindTexture(GL_TEXTURE_2D, depthFrameBuffer.texture);
 
         glViewport(0, 0, geometryPass.Width, geometryPass.Height);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1920,7 +1948,7 @@ int main()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, material.normal);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         // glActiveTexture(GL_TEXTURE2);
         // glBindTexture(GL_TEXTURE_2D, material.metallic);
         // glActiveTexture(GL_TEXTURE3);
@@ -2003,7 +2031,7 @@ int main()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, material.normal);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         // glActiveTexture(GL_TEXTURE2);
         // glBindTexture(GL_TEXTURE_2D, material.metallic);
         // glActiveTexture(GL_TEXTURE3);
@@ -2040,7 +2068,7 @@ int main()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, material.normal);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         // glActiveTexture(GL_TEXTURE2);
         // glBindTexture(GL_TEXTURE_2D, material.metallic);
         // glActiveTexture(GL_TEXTURE3);
