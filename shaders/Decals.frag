@@ -19,7 +19,7 @@ uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
 
-#define BIAS 1e-5
+#define BIAS 1e-4
 
 bool CheckBox(vec3 uv)
 {

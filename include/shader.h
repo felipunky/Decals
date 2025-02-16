@@ -191,7 +191,6 @@ public:
 		int uniform
 	)
 	{
-
 		glGenTextures(1, texture);
 		glBindTexture(GL_TEXTURE_2D, *texture);
 
@@ -213,6 +212,7 @@ public:
 
 		#ifdef OPTIMIZE
 		#else
+		std::cout << "Texture path: " << fileName << std::endl;
 		std::cout << "Original texture data: " << +data[0] << std::endl;
 		#endif
 		// Get the texture format automatically.

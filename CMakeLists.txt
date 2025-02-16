@@ -24,10 +24,11 @@ option(BASED_ON_SUBDIRECTORY "Use existing CMakeLists.txt from each submodule. T
 # Try and compile the original project to EMCC
 option(ORIGINAL_PROJECT "Compile original project" ON)
 if(ORIGINAL_PROJECT)
-    set(MAIN_SRC ${SOURCE_PATH}/main.cpp)
-else()
     set(MAIN_SRC ${SOURCE_PATH}/mainOne.cpp)
+else()
+    set(MAIN_SRC ${SOURCE_PATH}/main.cpp)
 endif()
+message(STATUS "Main src file: ${MAIN_SRC}")
 
 if(BASED_ON_SUBDIRECTORY)
     # Add GLM
@@ -141,19 +142,11 @@ if(DEFINED EMSCRIPTEN)
     message(STATUS "This is an EMSCRIPTEN build!")
 
     # Set sources for main
-    if(ORIGINAL_PROJECT)
-        add_executable(${PROJECT_NAME}
-            ${INCLUDE_PATH}/OpenGLTF.h
-            ${INCLUDE_PATH}/shader.h
-            ${SOURCE_PATH}/mainOne.cpp
-        )
-    else()
-        add_executable(${PROJECT_NAME}
-            ${INCLUDE_PATH}/OpenGLTF.h
-            ${INCLUDE_PATH}/shader.h
-            ${MAIN_SRC}
-        )
-    endif()
+    add_executable(${PROJECT_NAME}
+        ${INCLUDE_PATH}/OpenGLTF.h
+        ${INCLUDE_PATH}/shader.h
+        ${MAIN_SRC}
+    )
 
     # Set includes for main
     target_include_directories(${PROJECT_NAME} PUBLIC
@@ -190,6 +183,8 @@ if(DEFINED EMSCRIPTEN)
 
     MESSAGE(STATUS "RUNTIME_MODULES ${RUNTIME_MODULES}")
 
+    option(DEBUG_EMSCRIPTEN_OPENGL "Debug options for OpenGL!" OFF)
+
     # Emscripten Compile and Link flags.
     set(EMSCRIPTEN_OPTIMIZATION_LEVEL "-O3 ")
     set(EMSCRIPTEN_FLAGS "")
@@ -203,6 +198,11 @@ if(DEFINED EMSCRIPTEN)
     list(APPEND EMSCRIPTEN_FLAGS "-s FORCE_FILESYSTEM=1 ")
     list(APPEND EMSCRIPTEN_FLAGS "-s ALLOW_MEMORY_GROWTH=1 ")
     list(APPEND EMSCRIPTEN_FLAGS ${RUNTIME_MODULES})
+    if(DEBUG_EMSCRIPTEN_OPENGL)
+        list(APPEND EMSCRIPTEN_FLAGS "-s GL_DEBUG=1 ")
+        list(APPEND EMSCRIPTEN_FLAGS "-s GL_ASSERTIONS=1 ")
+    else()
+    endif()
     list(APPEND EMSCRIPTEN_FLAGS "-s ASSERTIONS=1")
     list(JOIN EMSCRIPTEN_FLAGS " " EMSCRIPTEN_FLAGS)
 
@@ -238,7 +238,11 @@ else()
 
     # Add shader files
     set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
-    file(GLOB_RECURSE SHADERS "${SHADERS_PATH}/*.glsl")
+    file(GLOB_RECURSE SHADERS 
+        ${SHADERS_PATH}/*.glsl
+        ${SHADERS_PATH}/*.vert
+        ${SHADERS_PATH}/*.frag
+    )
     # Pass the shaders as a header for the VS project to recognize them.
     set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
     # Copy shaders to build folder so that the .exe runs on Windows.
