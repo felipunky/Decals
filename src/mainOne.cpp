@@ -110,6 +110,40 @@ float lastX = ( float )( WIDTH ) * 0.5f,
         lastY = ( float )( HEIGHT ), 
         yaw = -90.0f, 
         pitch = 0.0f;
+
+/**
+* Start Camera Definitions
+*/
+// https://eliemichel.github.io/LearnWebGPU/basic-3d-rendering/some-interaction/camera-control.html
+struct CameraState
+{
+    // angles.x is the rotation of the camera around the global vertical axis, affected by mouse.x
+    // angles.y is the rotation of the camera around its local horizontal axis, affected by mouse.y
+    glm::vec2 angles = { 0.8f, 0.5f };
+    // zoom is the position of the camera along its local forward axis, affected by the scroll wheel
+    float zoom = -2.0f;
+};
+CameraState m_cameraState;
+
+struct DragState {
+    // Whether a drag action is ongoing (i.e., we are between mouse press and mouse release)
+    bool active = false;
+    // The position of the mouse at the beginning of the drag action
+    glm::vec2 startMouse;
+    // The camera state at the beginning of the drag action
+    CameraState startCameraState;
+
+    // Constant settings
+    float sensitivity = 0.01f;
+    float scrollSensitivity = 0.1f;
+};
+DragState m_drag;
+/**
+* End Camera Definitions
+*/
+
+void updateViewMatrix();
+
 /**
  * End User Interaction
  */
@@ -150,10 +184,10 @@ std::vector<uint8_t> uploadImage()
 
 std::vector<uint8_t> loadArray(uint8_t* buf, int bufSize)
 {
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Buffer size: " << bufSize << std::endl;
-    #endif
+#endif
     std::vector<uint8_t> result(buf, buf + bufSize);
     return result;
 }
@@ -214,7 +248,7 @@ extern "C"
         }
         loadGLTF(model);
         reloadModel();
-        recomputeCamera();
+        //recomputeCamera();
         isGLTF = true;
         data.clear();
     }
@@ -227,54 +261,54 @@ extern "C"
         std::string result = buf;
         ObjLoader(result);
         reloadModel();
-        recomputeCamera();
+        //recomputeCamera();
         isGLTF = false;
     }
     EMSCRIPTEN_KEEPALIVE
     void load(uint8_t* buf, int bufSize) 
     {
         //printf("[WASM] Loading Texture \n");
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading decal image!" << std::endl;
         std::cout << "Decal buffer size: " << bufSize << std::endl;
-        #endif
+#endif
         decalImageBuffer = loadArray(buf, bufSize);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSize(uint16_t* buf, int bufSize)
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading decal image size!" << std::endl;
         #endif
         widthDecal  = buf[0];
         heightDecal = buf[1];
         changeDecal = buf[2];
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Decal Width: "  << +widthDecal  << std::endl;
         std::cout << "Decal Height: " << +heightDecal << std::endl;
         std::cout << "Clicked :"      << +changeDecal     << std::endl;
-        #endif
+#endif
     }
     EMSCRIPTEN_KEEPALIVE
     void loadAlbedo(uint8_t* buf, int bufSize)
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading albedo from file!" << std::endl;
         std::cout << "Albedo buffer size: " << bufSize << std::endl;
-        #endif
+#endif
         geometryPass.createTextureFromFile(&(material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeAlbedo(uint16_t* buf, int bufSize)
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading Albedo image size!" << std::endl;
-        #endif
+#endif
         int width  = (int)buf[0];
         int height = (int)buf[1];
 
@@ -283,93 +317,93 @@ extern "C"
         geometryPass.Height = height;
         flipAlbedo = (int)buf[2];
         
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
-        #endif
-        glDeleteTextures(1, &renderAlbedo);
+#endif
+        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
         glDeleteTextures(1, &(material.baseColor));
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &renderAlbedo);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glGenTextures(1, &(textureSpaceFramebuffer.texture));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
         
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Albedo Width: "  << +geometryPass.Width  << std::endl;
         std::cout << "Albedo Height: " << +geometryPass.Height << std::endl;
         std::cout << "Changed Albedo: "<< +flipAlbedo        << std::endl;
-        #endif
+#endif
     }
     EMSCRIPTEN_KEEPALIVE
     void loadNormal(uint8_t* buf, int bufSize)
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading normal from file!" << std::endl;
         std::cout << "Normal buffer size: " << bufSize << std::endl;
-        #endif
+#endif
         geometryPass.createTextureFromFile(&(material.normal), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeNormal(uint16_t* buf, int bufSize)
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Reading Normal image size!" << std::endl;
-        #endif
+#endif
         int width  = (int)buf[0];
         int height = (int)buf[1];
 
         geometryPass.use();
 
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
-        #endif
-        glDeleteTextures(1, &renderAlbedo);
+#endif
+        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
         glDeleteTextures(1, &(material.normal));
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &renderAlbedo);
-        glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+        glGenTextures(1, &(textureSpaceFramebuffer.texture));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
 
         geometryPass.Width  = width;
         geometryPass.Height = height;
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "Normal Width: "  << +geometryPass.Width  << std::endl;
         std::cout << "Normal Height: " << +geometryPass.Height << std::endl;
-        #endif
+#endif
     }
     EMSCRIPTEN_KEEPALIVE
     uint8_t* downloadDecal(uint8_t *buf, int bufSize) 
     {
         if (decalResult.size() > 0)
         {
-            #ifdef OPTIMIZE
-            #else
+#ifdef OPTIMIZE
+#else
             std::cout << "Successful loading the image into data!" << std::endl;
-            #endif
+#endif
             uint8_t* result = &decalResult[0];
             return result;
         }
         else
         {
-            #ifdef OPTIMIZE
-            #else
+#ifdef OPTIMIZE
+#else
             std::cout << "Unsuccesful loading the image into data!" << std::endl;
-            #endif
+#endif
             /*int size = 4 * geometryPass.Width * geometryPass.Height;
             uint8_t values[size];
     
@@ -386,15 +420,15 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE
     void flipDecalTrigger()
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
             std::cout << "Flip Decal Trigger!\n" << "downloadImage:" << std::to_string(downloadImage) << std::endl;
-        #endif
+#endif
         downloadImage = 1u;
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
             std::cout << "downloadImage:" << std::to_string(downloadImage) << std::endl;
-        #endif
+#endif
     }
 }
 
@@ -457,12 +491,12 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
               /** Out **/
               glm::vec3& hitNor, glm::vec3& hitPos, glm::mat4& decalProjector)
 {
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Right button pressed!" << std::endl;
     std::cout << "mousePositionX: " << mousePositionX << " \n" << 
                  "mousePositionY: " << mousePositionY << std::endl;
-    #endif
+#endif
     
     // https://stackoverflow.com/questions/53467077/opengl-ray-tracing-using-inverse-transformations
     glm::vec2 normalizedMouse = glm::vec2(2.0f, 2.0f) * glm::vec2(mousePositionX, mousePositionY) / widthHeight;
@@ -1000,8 +1034,8 @@ void ObjLoader(std::string inputFile)
     std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
     std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Vertices: " << modelDataVertices.size() << "\n";
     std::cout << "Normals: " << modelDataNormals.size() << "\n";
     std::cout << "Tangents: " << modelDataTangents.size() << "\n";
@@ -1009,7 +1043,7 @@ void ObjLoader(std::string inputFile)
     std::cout << "Materials: " << materials.size() << "\n";
     std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
     std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
-    #endif
+#endif
 }
 
 bool loadModel(tinygltf::Model &model, const char *filename) {
@@ -1032,13 +1066,13 @@ bool loadModel(tinygltf::Model &model, const char *filename) {
     {
         std::cout << "Failed to load glTF: " << filename << std::endl;
     }
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     else
     {
         std::cout << "Loaded glTF: " << filename << std::endl;
     }
-    #endif
+#endif
     return res;
 }
 
@@ -1074,10 +1108,10 @@ void loadGLTF(tinygltf::Model &model)
 
     for (auto &mesh : model.meshes) 
     {
-        #ifdef OPTIMIZE
-        #else
+#ifdef OPTIMIZE
+#else
         std::cout << "mesh : " << mesh.name << std::endl;
-        #endif
+#endif
         for (const auto& prim : mesh.primitives)
         {
 
@@ -1130,8 +1164,8 @@ void loadGLTF(tinygltf::Model &model)
         ComputeTangents();
     }
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Vertices: " << modelDataVertices.size() << "\n";
     std::cout << "Normals: " << modelDataNormals.size() << "\n";
     std::cout << "Texture Coordinates: " << modelDataTextureCoordinates.size() << "\n";
@@ -1139,7 +1173,7 @@ void loadGLTF(tinygltf::Model &model)
     //std::cout << "Materials: " << materials.size() << "\n";
     std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
     std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
-    #endif
+#endif
     for (int i = 0; i < modelDataVertices.size(); ++i)
     {
         glm::vec3 vertex = modelDataVertices[i];
@@ -1212,12 +1246,12 @@ void BuildBVH()
     nanort::BVHBuildOptions<float> build_options;  // Use default option
     build_options.cache_bbox = false;
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     printf("  BVH build option:\n");
     printf("    # of leaf primitives: %d\n", build_options.min_leaf_primitives);
     printf("    SAH binsize         : %d\n", build_options.bin_size);
-    #endif
+#endif
     //std::cout << "Vertices size: " << (sizeof(vertices) / sizeof(vertices[0])) << std::endl;
 
     nanort::TriangleMesh<float> triangle_mesh(glm::value_ptr(modelDataVertices[0]), &indexes[0], sizeof(float) * 3);
@@ -1234,31 +1268,31 @@ void BuildBVH()
 
     nanort::BVHBuildStatistics stats = accelDummy.GetStatistics();
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     printf("  BVH statistics:\n");
     printf("    # of leaf   nodes: %d\n", stats.num_leaf_nodes);
     printf("    # of branch nodes: %d\n", stats.num_branch_nodes);
     printf("  Max tree depth     : %d\n", stats.max_tree_depth);
-    #endif
+#endif
     float bmin[3], bmax[3];
     accelDummy.BoundingBox(bmin, bmax);
     // bboxMax = glm::vec3(bmax[0], bmax[1], bmax[2]);
     // bboxMin = glm::vec3(bmin[0], bmin[1], bmax[2]);
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     printf("  Bmin               : %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
     printf("  Bmax               : %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
-    #endif
+#endif
     accel = accelDummy;
 }
 
 void recomputeCamera()
 {
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Recomputing camera!" << std::endl;
-    #endif
+#endif
     glm::vec3 diff = calculateNearFarPlane();// / radius;
     //camPos   = centroid + diff * glm::vec3(0.0f, 0.0f, (far - near));
     //camFront = glm::normalize(diff);//centroid - glm::vec3(0.0f, 0.0f, 1.0f));//camPos);
@@ -1275,19 +1309,19 @@ void recomputeCamera()
 
     glm::vec3 diffNormalize = glm::normalize(diff);// */ diff * adjacentEqualsOppositeOverTanThirty;
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "adjacentEqualsOppositeOverTanThirty: " << adjacentEqualsOppositeOverTanThirty << 
                  " DifNormalize: x:" << diffNormalize.x << " y: " << diffNormalize.y 
                  << " z: " << diffNormalize.z << std::endl;
-    #endif
+#endif
 
     camPos   = centroidBboxMin - (adjacentEqualsOppositeOverTanThirty * diffNormalize);// * radius * 8.0f;
     camFront = diffNormalize;
 	camUp    = glm::vec3(0.0f, 1.0f, 0.0f);
 
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Dif: " << glm::to_string(diff) << "\n";
     std::cout << "camPos: " << glm::to_string(camPos) << "\n";
     std::cout << "camFront: " << glm::to_string(camFront) << "\n";
@@ -1311,10 +1345,10 @@ void recomputeDecalBaseColorTexture()
 {
     //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
     //decalsPass.createTextureFromFile(&decalTexture, decalImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Changing texture" << std::endl;
-    #endif
+#endif
     flip = 1;
     glGenTextures(1, &(material.decalBaseColor));
     glBindTexture(GL_TEXTURE_2D, material.decalBaseColor);
@@ -1438,17 +1472,17 @@ void initializeShaderSource()
 #endif
 }
 
-void createAndAttachDepthPrePassRbo()
+frameBuffer createAndAttachDepthPrePassRbo()
 {
     /** Start Depth Buffer **/
-    glGenFramebuffers(1, &dBuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, dBuffer);
+    glGenFramebuffers(1, &(depthFramebuffer.framebuffer));
+    glBindFramebuffer(GL_FRAMEBUFFER, depthFramebuffer.framebuffer);
 
     depthPrePass.use();
 
     // create and attach depth buffer (renderbuffer)
-    glGenTextures(1, &rboDepth);
-    glBindTexture(GL_TEXTURE_2D, rboDepth);
+    glGenTextures(1, &(depthFramebuffer.texture));
+    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
 
@@ -1459,7 +1493,7 @@ void createAndAttachDepthPrePassRbo()
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, rboDepth, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthFramebuffer.texture, 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) 
     {
         std::cerr << "Framebuffer configuration failed" << std::endl;
@@ -1469,28 +1503,28 @@ void createAndAttachDepthPrePassRbo()
     glDrawBuffers(1, attachments);
     std::cout << "Depth frame buffer: framebuffer: " << depthFramebuffer.framebuffer << " texture: " << depthFramebuffer.texture << std::endl;
     /** End Depth Buffer **/
-    //return depthFramebuffer;
+    return depthFramebuffer;
 }
 
-void createAndAttachTextureSpaceRbo()
+frameBuffer createAndAttachTextureSpaceRbo()
 {
     /** Start Texture Space Buffer **/
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glGenFramebuffers(1, &(textureSpaceFramebuffer.framebuffer));
+    glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
     geometryPass.use();
-    #ifdef OPTIMIZE
-    #else
+#ifdef OPTIMIZE
+#else
     std::cout << "Albedo Width: "  << geometryPass.Width  << std::endl;
     std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
-    #endif
+#endif
 
-    glGenTextures(1, &renderAlbedo);
-    glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+    glGenTextures(1, &(textureSpaceFramebuffer.texture));
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderAlbedo, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
 
     // Set the list of draw buffers.
     unsigned int drawBuffersFBO[1] = {GL_COLOR_ATTACHMENT0};
@@ -1507,8 +1541,8 @@ void createAndAttachTextureSpaceRbo()
     // deferredPass.setInt("gRoughness", 3);
     // deferredPass.setInt("gAO",        4);
     /** End Texture Space Buffer **/
-    std::cout << "Texture space frame buffer: framebuffer: " << fbo << " texture: " << renderAlbedo << std::endl;
-    //return textureSpaceFramebuffer;
+    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " texture: " << textureSpaceFramebuffer.texture << std::endl;
+    return textureSpaceFramebuffer;
 }
 
 int main()
@@ -1617,7 +1651,7 @@ int main()
     /** End Create Decals Texture **/
 
     /** Start Depth Buffer **/
-    createAndAttachDepthPrePassRbo();
+    depthFramebuffer = createAndAttachDepthPrePassRbo();
     /** End Depth Buffer **/
 
     /** Start Texture Space Buffer **/
@@ -1665,11 +1699,18 @@ int main()
 
     widthHeight = glm::vec2(WIDTH, HEIGHT);
 
-    recomputeCamera();
+    //recomputeCamera();
 
     projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
+#if CAMERA == 0
     view = glm::lookAt(camPos, camPos + camFront, camUp);
     viewPinned = view;
+#elif CAMERA == 1
+    updateViewMatrix();
+    recomputeCamera();
+    viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
+#endif
+    
 
     rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
              indexes, projection, view, model, true,
@@ -1704,6 +1745,47 @@ int main()
     //delete newTextureCoords;
 
     return EXIT_SUCCESS;
+}
+
+void updateViewMatrix()
+{
+    float cx = cos(m_cameraState.angles.x);
+    float sx = sin(m_cameraState.angles.x);
+    float cy = cos(m_cameraState.angles.y);
+    float sy = sin(m_cameraState.angles.y);
+    glm::vec3 position = glm::vec3(cx * cy, sx * cy, sy) * std::exp(-m_cameraState.zoom);
+    view = glm::lookAt(position, centroid, glm::vec3(0.0f, 0.0f, 1.0f));
+}
+
+void mouse_press(SDL_MouseButtonEvent& button)
+{
+    if (button.button == SDL_BUTTON_LEFT)
+    {
+        m_drag.active = true;
+        double xpos, ypos;
+        //glfwGetCursorPos(m_window, &xpos, &ypos);
+        Uint32 buttons;
+        buttons = SDL_GetMouseState(&mousePositionX, &mousePositionY);
+        glm::vec2 mouse = glm::vec2(mousePositionX, -mousePositionY + HEIGHT);
+        //mousePositionX = mousePositionX + WIDTH / 4;
+        m_drag.startMouse = glm::vec2(-mouse.x, mouse.y);
+        m_drag.startCameraState = m_cameraState;
+    }
+}
+
+void mouse_unpressed(SDL_MouseButtonEvent& button)
+{
+    if (button.state == SDL_RELEASED)
+    {
+        m_drag.active = false;
+    }
+}
+
+void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
+{
+    m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
+    m_cameraState.zoom = glm::clamp(m_cameraState.zoom, -2.0f, 2.0f);
+    updateViewMatrix();
 }
 
 void main_loop()
@@ -1749,6 +1831,23 @@ void main_loop()
         
         switch(event.type)
         {
+#if CAMERA == 1
+            case SDL_MOUSEBUTTONDOWN:
+            {
+                mouse_press(event.button);
+                break;
+            }
+            case SDL_MOUSEBUTTONUP:
+            {
+                mouse_unpressed(event.button);
+                break;
+            }
+            case SDL_MOUSEWHEEL:
+            {
+                mouse_wheel(event.wheel);
+                break;
+            }
+#endif
             case SDL_QUIT:
             {
                 main_loop_running = false;
@@ -1763,6 +1862,7 @@ void main_loop()
                 }
                 break;
             }
+#if CAMERA == 0
             case SDL_KEYDOWN:
             {
                 switch (event.key.keysym.sym)
@@ -1798,10 +1898,15 @@ void main_loop()
                 }
                 break;
             }
+#endif
+            default:
+            {
+                break;
+            }
         }
     }
 
-    view = glm::lookAt(camPos, camPos + camFront, camUp);
+    //view = glm::lookAt(camPos, camPos + camFront, camUp);
 
     //std::cout << glm::to_string(view) << std::endl;
 
@@ -1826,13 +1931,14 @@ void main_loop()
         buttons = SDL_GetMouseState(&mousePositionX, &mousePositionY);
         mouse = glm::vec3(mousePositionX, -mousePositionY + HEIGHT, (clicked ? 1.0f : 0.0f));
         mousePositionX = mousePositionX + WIDTH / 4;
+#if CAMERA == 0        
         if ((buttons & SDL_BUTTON_LMASK) != 0) 
         {
             clicked = true;
-            #ifdef OPTIMIZE
-            #else
+#ifdef OPTIMIZE
+#else
             std::cout << "Mouse Button 1 (left) is pressed.\n";
-            #endif
+#endif
         }
         else
         {
@@ -1870,7 +1976,17 @@ void main_loop()
         front.y = sin(glm::radians(pitch));
         front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
         camFront = glm::normalize(front);
-
+#elif CAMERA == 1
+        if (m_drag.active)
+        {
+            glm::vec2 currentMouse = mouse.xy;
+            glm::vec2 delta = (currentMouse - m_drag.startMouse) * m_drag.sensitivity;
+            m_cameraState.angles = m_drag.startCameraState.angles + delta;
+            // Clamp to avoid going too far when orbitting up/down
+            m_cameraState.angles.y = glm::clamp(m_cameraState.angles.y, -PI / 2 + 1e-5f, PI / 2 - 1e-5f);
+            updateViewMatrix();
+        }
+#endif
         if ((buttons & SDL_BUTTON_RMASK) != 0)
         {
             rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
@@ -1949,7 +2065,7 @@ void main_loop()
     glEnable(GL_DEPTH_TEST);
     glDepthMask(true);
     glCullFace(GL_BACK);
-    glBindFramebuffer(GL_FRAMEBUFFER, dBuffer); 
+    glBindFramebuffer(GL_FRAMEBUFFER, depthFramebuffer.framebuffer);
 
     depthPrePass.use();
     glBindVertexArray(VAO); 
@@ -1968,7 +2084,7 @@ void main_loop()
     /** Start Decal Pass **/
     glEnable(GL_DEPTH_TEST);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
     decalsPass.use();
     decalsPass.setMat4("model", model);
     decalsPass.setMat4("projection", projection);
@@ -1987,7 +2103,7 @@ void main_loop()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, material.decalBaseColor);
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, rboDepth);
+    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
 
     glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -2022,7 +2138,7 @@ void main_loop()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, material.normal);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
     // glActiveTexture(GL_TEXTURE2);
     // glBindTexture(GL_TEXTURE_2D, material.metallic);
     // glActiveTexture(GL_TEXTURE3);
@@ -2105,7 +2221,7 @@ void main_loop()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, material.normal);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
     // glActiveTexture(GL_TEXTURE2);
     // glBindTexture(GL_TEXTURE_2D, material.metallic);
     // glActiveTexture(GL_TEXTURE3);
@@ -2142,7 +2258,7 @@ void main_loop()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, material.normal);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderAlbedo);
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
     // glActiveTexture(GL_TEXTURE2);
     // glBindTexture(GL_TEXTURE_2D, material.metallic);
     // glActiveTexture(GL_TEXTURE3);
