@@ -100,6 +100,7 @@ glm::vec2 widthHeight;
  */
 // OpenGL is right handed so the last component corresponds to move forward/backwards.
 int mousePositionX, mousePositionY;
+glm::vec3 mouse;
 bool mouseInsideOfWindow;
 bool clicked = false;
 
@@ -119,9 +120,9 @@ struct CameraState
 {
     // angles.x is the rotation of the camera around the global vertical axis, affected by mouse.x
     // angles.y is the rotation of the camera around its local horizontal axis, affected by mouse.y
-    glm::vec2 angles = { 0.8f, 0.5f };
+    glm::vec2 angles = { 0.0f, 0.0f };
     // zoom is the position of the camera along its local forward axis, affected by the scroll wheel
-    float zoom = -2.0f;
+    float zoom = -10.0f;
 };
 CameraState m_cameraState;
 
@@ -135,7 +136,7 @@ struct DragState {
 
     // Constant settings
     float sensitivity = 0.01f;
-    float scrollSensitivity = 0.1f;
+    float scrollSensitivity = 1.0f;
 };
 DragState m_drag;
 /**
@@ -170,6 +171,7 @@ float iTime;
 nanort::BVHAccel<float> accel;
 glm::vec3 hitPos = glm::vec3(0.0, 0.0, 0.0);
 glm::vec3 hitNor = glm::vec3(1.0, 1.0, 1.0);
+bool isTracing = false;
 unsigned int VBOVertices, VBONormals, VBOTextureCoordinates, VBOTangents, VAO, EBO;
 
 std::vector<uint8_t> uploadImage()
@@ -1703,6 +1705,7 @@ int main()
 
     projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
 #if CAMERA == 0
+    recomputeCamera();
     view = glm::lookAt(camPos, camPos + camFront, camUp);
     viewPinned = view;
 #elif CAMERA == 1
@@ -1749,42 +1752,87 @@ int main()
 
 void updateViewMatrix()
 {
-    float cx = cos(m_cameraState.angles.x);
-    float sx = sin(m_cameraState.angles.x);
-    float cy = cos(m_cameraState.angles.y);
-    float sy = sin(m_cameraState.angles.y);
-    glm::vec3 position = glm::vec3(cx * cy, sx * cy, sy) * std::exp(-m_cameraState.zoom);
-    view = glm::lookAt(position, centroid, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::quat qYaw   = glm::angleAxis(-m_cameraState.angles.x, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat qPitch = glm::angleAxis(-m_cameraState.angles.y, glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat orientation = glm::normalize(qYaw * qPitch);
+    glm::mat4 rotate = glm::mat4_cast(orientation);
+    
+    glm::mat4 translate = glm::mat4(1.0f);
+    glm::vec3 eye = centroid - glm::vec3(0.0f, 0.0f, m_cameraState.zoom);
+    translate = glm::translate(translate, -eye);
+    view = translate * rotate;
 }
 
-void mouse_press(SDL_MouseButtonEvent& button)
+void mouse_press(SDL_Event& event)
 {
-    if (button.button == SDL_BUTTON_LEFT)
+    switch (event.button.button)
     {
-        m_drag.active = true;
-        double xpos, ypos;
-        //glfwGetCursorPos(m_window, &xpos, &ypos);
-        Uint32 buttons;
-        buttons = SDL_GetMouseState(&mousePositionX, &mousePositionY);
-        glm::vec2 mouse = glm::vec2(mousePositionX, -mousePositionY + HEIGHT);
-        //mousePositionX = mousePositionX + WIDTH / 4;
-        m_drag.startMouse = glm::vec2(-mouse.x, mouse.y);
-        m_drag.startCameraState = m_cameraState;
+        case SDL_BUTTON_LEFT:
+        {
+            // Turntable.
+            m_drag.active = true;
+            mouse = glm::vec3(event.motion.x, -event.motion.y + HEIGHT, 1.0f);
+            m_drag.startMouse = mouse.xy;
+            m_drag.startCameraState = m_cameraState;
+            break;
+        }
+        case SDL_BUTTON_RIGHT:
+        {
+            // Raytracing.
+            isTracing = true;
+            break;
+        }
+        default:
+        {
+            break;
+        }
     }
 }
 
 void mouse_unpressed(SDL_MouseButtonEvent& button)
 {
-    if (button.state == SDL_RELEASED)
+    switch (button.button)
     {
-        m_drag.active = false;
+        case SDL_BUTTON_LEFT:
+        {
+            m_drag.active = false;
+            break;
+        }
+        case SDL_BUTTON_RIGHT:
+        {
+            isTracing = false;
+            break;
+        }
+        default:
+        {
+            break;
+        }
+    }
+}
+
+void mouse_motion(SDL_Event& event)
+{
+    if (m_drag.active)
+    {
+        glm::vec2 currentMouse = glm::vec2(event.motion.x, -event.motion.y + HEIGHT);
+        glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, currentMouse.y) -
+                           glm::vec2(currentMouse.x, m_drag.startMouse.y)) *
+                           m_drag.sensitivity;
+        m_cameraState.angles = m_drag.startCameraState.angles + delta;
+        updateViewMatrix();
+    }
+    // Raytrace.
+    if (isTracing)
+    {
+        rayTrace(event.motion.x + WIDTH / 4, event.motion.y, widthHeight, modelDataVertices,
+                 indexes, projection, view, model, false,
+                 /* Out */hitNor, hitPos, decalProjector);
     }
 }
 
 void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
 {
     m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
-    m_cameraState.zoom = glm::clamp(m_cameraState.zoom, -2.0f, 2.0f);
     updateViewMatrix();
 }
 
@@ -1794,6 +1842,24 @@ void main_loop()
     //model = glm::scale(model, glm::vec3(rNearFar));
     //model = glm::translate(model, -centroid);
     //modelNoGuizmo = model;
+
+    //view = glm::lookAt(camPos, camPos + camFront, camUp);
+
+    //std::cout << glm::to_string(view) << std::endl;
+
+    widthHeight = glm::vec2(WIDTH, HEIGHT);
+
+    // No need to compute this every frame as the FOV stays always the same.
+    glm::vec2 halfWidthHeight = widthHeight * glm::vec2(0.5, 0.5);
+    float aspect = halfWidthHeight.x / halfWidthHeight.y;
+
+    // calculateNearFarPlane(bboxMax, centroid, /** Out **/ near, far);
+    // differenceBboxMaxMin = bboxMax - bboxMin;
+    projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
+    glm::mat4 projectionHalf = glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane);
+    glm::mat4 projectionSide //= glm::ortho(bboxMin.x, bboxMax.x, bboxMin.y, bboxMax.y, bboxMin.z, bboxMax.z);
+        = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
+    //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
     
     if (decalImageBuffer.size() > 0)
     {
@@ -1834,12 +1900,17 @@ void main_loop()
 #if CAMERA == 1
             case SDL_MOUSEBUTTONDOWN:
             {
-                mouse_press(event.button);
+                mouse_press(event);
                 break;
             }
             case SDL_MOUSEBUTTONUP:
             {
                 mouse_unpressed(event.button);
+                break;
+            }
+            case SDL_MOUSEMOTION:
+            {
+                mouse_motion(event);
                 break;
             }
             case SDL_MOUSEWHEEL:
@@ -1906,32 +1977,15 @@ void main_loop()
         }
     }
 
-    //view = glm::lookAt(camPos, camPos + camFront, camUp);
-
-    //std::cout << glm::to_string(view) << std::endl;
-
-    widthHeight = glm::vec2(WIDTH, HEIGHT);
-
-    // No need to compute this every frame as the FOV stays always the same.
-    glm::vec2 halfWidthHeight = widthHeight * glm::vec2(0.5, 0.5);
-    float aspect = halfWidthHeight.x / halfWidthHeight.y;
-
-    // calculateNearFarPlane(bboxMax, centroid, /** Out **/ near, far);
-    // differenceBboxMaxMin = bboxMax - bboxMin;
-    projection               = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
-    glm::mat4 projectionHalf = glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane);                         
-    glm::mat4 projectionSide //= glm::ortho(bboxMin.x, bboxMax.x, bboxMin.y, bboxMax.y, bboxMin.z, bboxMax.z);
-                                = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
-                                //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
-    glm::vec3 mouse;
     if (!insideImGui || !keyboardImGui)
     {
+#if CAMERA == 0 
         //int x, y;
         Uint32 buttons;
         buttons = SDL_GetMouseState(&mousePositionX, &mousePositionY);
-        mouse = glm::vec3(mousePositionX, -mousePositionY + HEIGHT, (clicked ? 1.0f : 0.0f));
         mousePositionX = mousePositionX + WIDTH / 4;
-#if CAMERA == 0        
+        mouse = glm::vec3(mousePositionX, -mousePositionY + HEIGHT, (clicked ? 1.0f : 0.0f));
+       
         if ((buttons & SDL_BUTTON_LMASK) != 0) 
         {
             clicked = true;
@@ -1977,22 +2031,46 @@ void main_loop()
         front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
         camFront = glm::normalize(front);
 #elif CAMERA == 1
-        if (m_drag.active)
+        /*if ((buttons & SDL_BUTTON_LMASK) != 0)
         {
-            glm::vec2 currentMouse = mouse.xy;
-            glm::vec2 delta = (currentMouse - m_drag.startMouse) * m_drag.sensitivity;
-            m_cameraState.angles = m_drag.startCameraState.angles + delta;
-            // Clamp to avoid going too far when orbitting up/down
-            m_cameraState.angles.y = glm::clamp(m_cameraState.angles.y, -PI / 2 + 1e-5f, PI / 2 - 1e-5f);
-            updateViewMatrix();
-        }
+            clicked = true;
+#ifdef OPTIMIZE
+#else
+            //std::cout << "Mouse Button 1 (left) is pressed.\n";
 #endif
-        if ((buttons & SDL_BUTTON_RMASK) != 0)
+        }
+        else
+        {
+            clicked = false;
+        }
+
+        if (firstMouse || !clicked)
+        {
+            m_drag.startMouse = mouse.xy;
+            firstMouse = false;
+        }
+        //if (m_drag.active)
+        {
+            glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, mouse.y) - 
+                               glm::vec2(mouse.x, m_drag.startMouse.y)) * 
+                               m_drag.sensitivity;
+
+            m_drag.startMouse.x = mouse.x;
+            m_drag.startMouse.y = mouse.y;
+
+            m_drag.startCameraState.angles += delta;
+
+            
+            m_cameraState.angles = m_drag.startCameraState.angles;// +delta;
+            updateViewMatrix();
+        }*/
+#endif
+        /*if ((buttons & SDL_BUTTON_RMASK) != 0)
         {
             rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
-                        indexes, projection, view, model, !false,
-                        /** Out **/ hitNor, hitPos, decalProjector);
-        }
+                     indexes, projection, view, model, false,
+                      hitNor, hitPos, decalProjector);
+        }*/
 
     }
 
