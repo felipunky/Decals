@@ -94,10 +94,12 @@ glm::mat4 projection    = glm::mat4(1.0f);
 glm::mat4 modelNoGuizmo = glm::mat4(1.0f);
 glm::mat4 viewPinned    = glm::mat4(1.0f);
 glm::vec2 widthHeight;
+bool isActiveFPS = false;
 
  /**
  * Start User Interaction
  */
+TYPE_OF_CAMERA CAMERA = TURN_TABLE;
 // OpenGL is right handed so the last component corresponds to move forward/backwards.
 int mousePositionX, mousePositionY;
 glm::vec3 mouse;
@@ -493,12 +495,12 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
               /** Out **/
               glm::vec3& hitNor, glm::vec3& hitPos, glm::mat4& decalProjector)
 {
-#ifdef OPTIMIZE
-#else
-    std::cout << "Right button pressed!" << std::endl;
-    std::cout << "mousePositionX: " << mousePositionX << " \n" << 
-                 "mousePositionY: " << mousePositionY << std::endl;
-#endif
+    if (debug)
+    {
+        std::cout << "Right button pressed!" << std::endl;
+        std::cout << "mousePositionX: " << mousePositionX << " \n" <<
+            "mousePositionY: " << mousePositionY << std::endl;
+    }
     
     // https://stackoverflow.com/questions/53467077/opengl-ray-tracing-using-inverse-transformations
     glm::vec2 normalizedMouse = glm::vec2(2.0f, 2.0f) * glm::vec2(mousePositionX, mousePositionY) / widthHeight;
@@ -1704,19 +1706,21 @@ int main()
     //recomputeCamera();
 
     projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
-#if CAMERA == 0
-    recomputeCamera();
-    view = glm::lookAt(camPos, camPos + camFront, camUp);
-    viewPinned = view;
-#elif CAMERA == 1
-    updateViewMatrix();
-    recomputeCamera();
-    viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
-#endif
+    if (CAMERA == FPS)
+    {
+        recomputeCamera();
+        view = glm::lookAt(camPos, camPos + camFront, camUp);
+        viewPinned = view;
+    }
+    else if (CAMERA == TURN_TABLE)
+    {
+        updateViewMatrix();
+        recomputeCamera();
+        viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
+    }
     
-
     rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
-             indexes, projection, view, model, true,
+             indexes, projection, view, model, false,
              /** Out **/ hitNor, hitPos, decalProjector);
 
     std::cout << "Dec Width: " << +widthDecal << " Dec Height: "
@@ -1766,14 +1770,23 @@ void updateViewMatrix()
 void mouse_press(SDL_Event& event)
 {
     switch (event.button.button)
-    {
+    {    
         case SDL_BUTTON_LEFT:
         {
-            // Turntable.
-            m_drag.active = true;
             mouse = glm::vec3(event.motion.x, -event.motion.y + HEIGHT, 1.0f);
-            m_drag.startMouse = mouse.xy;
-            m_drag.startCameraState = m_cameraState;
+            if (CAMERA == FPS)
+            {
+                isActiveFPS = true;
+                lastX = mouse.x;
+                lastY = mouse.y;
+            }
+            else if (CAMERA == TURN_TABLE)
+            {
+                m_drag.active = true;
+                m_drag.startMouse.x = mouse.x;
+                m_drag.startMouse.y = mouse.y;
+                m_drag.startCameraState = m_cameraState;
+            }
             break;
         }
         case SDL_BUTTON_RIGHT:
@@ -1795,7 +1808,14 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
     {
         case SDL_BUTTON_LEFT:
         {
-            m_drag.active = false;
+            if (CAMERA == FPS)
+            {
+                isActiveFPS = false;
+            }
+            else if (CAMERA == TURN_TABLE)
+            {
+                m_drag.active = false;
+            }
             break;
         }
         case SDL_BUTTON_RIGHT:
@@ -1812,14 +1832,48 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
 
 void mouse_motion(SDL_Event& event)
 {
-    if (m_drag.active)
+    glm::vec2 currentMouse = glm::vec2(event.motion.x, -event.motion.y + HEIGHT);
+    if (CAMERA == FPS)
     {
-        glm::vec2 currentMouse = glm::vec2(event.motion.x, -event.motion.y + HEIGHT);
-        glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, currentMouse.y) -
-                           glm::vec2(currentMouse.x, m_drag.startMouse.y)) *
-                           m_drag.sensitivity;
-        m_cameraState.angles = m_drag.startCameraState.angles + delta;
-        updateViewMatrix();
+        if (isActiveFPS)
+        {
+            float xoffset = currentMouse.x - lastX;
+            float yoffset = lastY - currentMouse.y; // reversed since y-coordinates go from bottom to top
+            lastX = currentMouse.x;
+            lastY = currentMouse.y;
+
+            float sensitivity = 0.1f; // Who doesn't like magic values?
+            xoffset *= sensitivity;
+            yoffset *= sensitivity;
+
+            yaw += xoffset;
+            pitch += yoffset;
+
+            // make sure that when pitch is out of bounds, screen doesn't get flipped
+            if (pitch > 89.0f)
+                pitch = 89.0f;
+            if (pitch < -89.0f)
+                pitch = -89.0f;
+
+            // Kill me math wizards, or lock me then Gimbal...
+            glm::vec3 front;
+            front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+            front.y = sin(glm::radians(pitch));
+            front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+            camFront = glm::normalize(front);
+            view = glm::lookAt(camPos, camPos + camFront, camUp);
+        }
+    }
+    else if (CAMERA == TURN_TABLE)
+    {
+        if (m_drag.active)
+        {
+            glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, currentMouse.y) -
+                glm::vec2(currentMouse.x, m_drag.startMouse.y)) *
+                m_drag.sensitivity;
+            m_cameraState.angles = m_drag.startCameraState.angles + delta;
+            updateViewMatrix();
+        }
     }
     // Raytrace.
     if (isTracing)
@@ -1832,21 +1886,55 @@ void mouse_motion(SDL_Event& event)
 
 void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
 {
-    m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
-    updateViewMatrix();
+    if (CAMERA == TURN_TABLE)
+    {
+        m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
+        updateViewMatrix();
+    }
+}
+
+void key_down(int& keyCode)
+{
+    if (CAMERA == FPS)
+    {
+        float camSpeed = deltaTime * SPEED;
+        switch (keyCode)
+        {
+            case SDLK_w:
+            {
+                camPos += camSpeed * camFront;
+                //std::cout << "Pressed W" <<"\n";
+                break;
+            }
+            case SDLK_s:
+            {
+                camPos -= camSpeed * camFront;
+                //std::cout << "Pressed S" <<"\n";
+                break;
+            }
+            case SDLK_a:
+            {
+                camPos -= camSpeed * glm::normalize(glm::cross(camFront, camUp));
+                //std::cout << "Pressed A" <<"\n";
+                break;
+            }
+            case SDLK_d:
+            {
+                camPos += camSpeed * glm::normalize(glm::cross(camFront, camUp));
+                //std::cout << "Pressed D" <<"\n";
+                break;
+            }
+            default:
+            {
+                break;
+            }
+        }
+        view = glm::lookAt(camPos, camPos + camFront, camUp);
+    }
 }
 
 void main_loop()
 {
-    //model = glm::mat4(1.0f);
-    //model = glm::scale(model, glm::vec3(rNearFar));
-    //model = glm::translate(model, -centroid);
-    //modelNoGuizmo = model;
-
-    //view = glm::lookAt(camPos, camPos + camFront, camUp);
-
-    //std::cout << glm::to_string(view) << std::endl;
-
     widthHeight = glm::vec2(WIDTH, HEIGHT);
 
     // No need to compute this every frame as the FOV stays always the same.
@@ -1869,7 +1957,6 @@ void main_loop()
     /**
      * Start ImGui
      */	        
-    float camSpeed = deltaTime * SPEED;
     bool shiftIsPressed = false;
 
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -1897,7 +1984,6 @@ void main_loop()
         
         switch(event.type)
         {
-#if CAMERA == 1
             case SDL_MOUSEBUTTONDOWN:
             {
                 mouse_press(event);
@@ -1918,7 +2004,6 @@ void main_loop()
                 mouse_wheel(event.wheel);
                 break;
             }
-#endif
             case SDL_QUIT:
             {
                 main_loop_running = false;
@@ -1926,152 +2011,22 @@ void main_loop()
             }
             case SDL_KEYUP:
             {
-                int sym = event.key.keysym.sym;
-                if (sym == SDLK_ESCAPE)
+                if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
                     main_loop_running = false;
                 }
                 break;
             }
-#if CAMERA == 0
             case SDL_KEYDOWN:
             {
-                switch (event.key.keysym.sym)
-                {
-                    case SDLK_w:
-                    {
-                        camPos += camSpeed * camFront;
-                        //std::cout << "Pressed W" <<"\n";
-                        break;
-                    }
-                    case SDLK_s:
-                    {
-                        camPos -= camSpeed * camFront;
-                        //std::cout << "Pressed S" <<"\n";
-                        break;
-                    }
-                    case SDLK_a:
-                    {
-                        camPos -= camSpeed * glm::normalize(glm::cross(camFront, camUp));
-                        //std::cout << "Pressed A" <<"\n";
-                        break;
-                    }
-                    case SDLK_d:
-                    {
-                        camPos += camSpeed * glm::normalize(glm::cross(camFront, camUp));
-                        //std::cout << "Pressed D" <<"\n";
-                        break;
-                    }
-                    default:
-                    {
-                        break;
-                    }
-                }
+                key_down(event.key.keysym.sym);
                 break;
             }
-#endif
             default:
             {
                 break;
             }
         }
-    }
-
-    if (!insideImGui || !keyboardImGui)
-    {
-#if CAMERA == 0 
-        //int x, y;
-        Uint32 buttons;
-        buttons = SDL_GetMouseState(&mousePositionX, &mousePositionY);
-        mousePositionX = mousePositionX + WIDTH / 4;
-        mouse = glm::vec3(mousePositionX, -mousePositionY + HEIGHT, (clicked ? 1.0f : 0.0f));
-       
-        if ((buttons & SDL_BUTTON_LMASK) != 0) 
-        {
-            clicked = true;
-#ifdef OPTIMIZE
-#else
-            std::cout << "Mouse Button 1 (left) is pressed.\n";
-#endif
-        }
-        else
-        {
-            clicked = false;
-        }
-
-        if(firstMouse || !clicked)
-        {
-            lastX = mouse.x;
-            lastY = mouse.y;
-            firstMouse = false;
-        }
-
-        float xoffset = mouse.x - lastX;
-        float yoffset = lastY - mouse.y; // reversed since y-coordinates go from bottom to top
-        lastX = mouse.x;
-        lastY = mouse.y;
-
-        float sensitivity = 0.1f; // Who doesn't like magic values?
-        xoffset *= sensitivity;
-        yoffset *= sensitivity;
-
-        yaw += xoffset;
-        pitch += yoffset;
-
-        // make sure that when pitch is out of bounds, screen doesn't get flipped
-        if (pitch > 89.0f)
-            pitch = 89.0f;
-        if (pitch < -89.0f)
-            pitch = -89.0f;
-
-        // Kill me math wizards, or lock me then Gimbal...
-        glm::vec3 front;
-        front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-        front.y = sin(glm::radians(pitch));
-        front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-        camFront = glm::normalize(front);
-#elif CAMERA == 1
-        /*if ((buttons & SDL_BUTTON_LMASK) != 0)
-        {
-            clicked = true;
-#ifdef OPTIMIZE
-#else
-            //std::cout << "Mouse Button 1 (left) is pressed.\n";
-#endif
-        }
-        else
-        {
-            clicked = false;
-        }
-
-        if (firstMouse || !clicked)
-        {
-            m_drag.startMouse = mouse.xy;
-            firstMouse = false;
-        }
-        //if (m_drag.active)
-        {
-            glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, mouse.y) - 
-                               glm::vec2(mouse.x, m_drag.startMouse.y)) * 
-                               m_drag.sensitivity;
-
-            m_drag.startMouse.x = mouse.x;
-            m_drag.startMouse.y = mouse.y;
-
-            m_drag.startCameraState.angles += delta;
-
-            
-            m_cameraState.angles = m_drag.startCameraState.angles;// +delta;
-            updateViewMatrix();
-        }*/
-#endif
-        /*if ((buttons & SDL_BUTTON_RMASK) != 0)
-        {
-            rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
-                     indexes, projection, view, model, false,
-                      hitNor, hitPos, decalProjector);
-        }*/
-
     }
 
     // Start the Dear ImGui frame
@@ -2083,13 +2038,38 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
+    static const char* cameraTypes[]{"FPS", "Turntable"};
+    static const char* selectedItem = cameraTypes[1];
+    if (ImGui::BeginCombo("Camera", selectedItem, 0))
+    {
+        for (int n = 0; n < IM_ARRAYSIZE(cameraTypes); n++)
+        {
+            bool is_selected = (selectedItem == cameraTypes[n]);
+            if (ImGui::Selectable(cameraTypes[n], is_selected))
+                selectedItem = cameraTypes[n];
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+        }
+        ImGui::EndCombo();
+    }
+    std::cout << "CAMERA: " << CAMERA << std::endl;
+    if (strcmp(selectedItem, "FPS") == 0)
+    {
+        CAMERA = FPS;
+        //std::cout << "FPS" << std::endl;
+    }
+    else if (strcmp(selectedItem, "Turntable") == 0)
+    {
+        CAMERA = TURN_TABLE;
+        //std::cout << "Turntable" << std::endl;
+    }
     if (ImGui::Button("Enable Normal Map"))
     {
         normalMap = !normalMap;
     }
     ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
     ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
-    ImGui::SliderFloat("Projector Size", &projectorSize, 0.1f, 1.0f);
+    ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
     ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f); 
     if (ImGui::Button("Flip decals"))
     {

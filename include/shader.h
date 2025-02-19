@@ -40,7 +40,14 @@
 	#define OPTIMIZE
 #endif
 // 0 for FPS 1 for Turntable
-#define CAMERA 1
+//#define CAMERA 1
+enum TYPE_OF_CAMERA
+{
+	FPS,
+	TURN_TABLE
+};
+
+//TYPE_OF_CAMERA CAMERA = FPS;
 
 // Shader class taken from, there are some functions that are implemented by me: 
 // https://learnopengl.com/code_viewer_gh.php?code=includes/learnopengl/shader_m.h
