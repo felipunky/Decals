@@ -14,8 +14,6 @@ set(PROJECT_NAME "App")
 set(SOURCE_PATH ${PROJECT_SOURCE_DIR}/src)
 set(INCLUDE_PATH ${PROJECT_SOURCE_DIR}/include)
 set(SUBMODULES_PATH ${PROJECT_SOURCE_DIR}/submodules)
-# Shaders
-set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
 
 # Add subdirectory based lib generation. It compiles examples
 # we don't want this. 
@@ -243,6 +241,14 @@ else()
         ${SHADERS_PATH}/*.vert
         ${SHADERS_PATH}/*.frag
     )
+    # Add asset files
+    set(ASSETS_PATH ${PROJECT_SOURCE_DIR}/Assets)
+    file(GLOB_RECURSE ASSETS
+        ${ASSETS_PATH}/*.gltf
+        ${ASSETS_PATH}/*.obj
+        ${ASSETS_PATH}/*.png
+        ${ASSETS_PATH}/*.jpg
+    )
     # Pass the shaders as a header for the VS project to recognize them.
     set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
     # Copy shaders to build folder so that the .exe runs on Windows.
@@ -317,17 +323,18 @@ else()
             $<TARGET_FILE_DIR:SDL2::SDL2>/SDL2.dll
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
-        #message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
-        # Create a shaders folder on the build folder.
+        # Copy shaders folder.
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${SHADERS_PATH}
             ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
         )
-        # Copy shaders to build folder so that the .exe runs on Windows.
+        # ASSETS
+        # Copy Assets folder on the build folder.
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${SHADERS}
-            ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${ASSETS_PATH}
+            ${CMAKE_CURRENT_SOURCE_DIR}/build/Assets
         )
     endif()
 endif()
