@@ -83,9 +83,8 @@ namespace GLTF
 
 		return true;
 	}
-	bool GetGLTFModel(tinygltf::Model* model, const std::vector<unsigned char>& data)
+	bool GetGLTFModel(tinygltf::Model* model, std::string& err, std::string& warn, const std::vector<unsigned char>& data)
 	{
-		std::string err, warn;
 		std::string basedir = "";
 
 		tinygltf::TinyGLTF t;

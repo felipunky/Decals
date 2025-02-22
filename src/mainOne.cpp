@@ -241,13 +241,17 @@ extern "C"
         std::string result = buf;
         tinygltf::Model model;
         std::vector<unsigned char> data(result.begin(), result.end());
-        bool res = GLTF::GetGLTFModel(&model, data);
+        std::cout << "Data GLTF size: " << data.size() << std::endl;
+        std::string err, warn;
+        bool res = GLTF::GetGLTFModel(&model, err, warn, data);
         if (!res)
         {
             #ifdef EXCEPTIONS
             throw std::runtime_error("Unable to read GLTF!");
             #else
             std::cout << "Unable to read GLTF!" << std::endl;
+            std::cout << "Error: " << err << std::endl;
+            std::cout << "Warning: " << warn << std::endl;
             #endif
         }
         loadGLTF(model);
@@ -2052,7 +2056,7 @@ void main_loop()
         }
         ImGui::EndCombo();
     }
-    std::cout << "CAMERA: " << CAMERA << std::endl;
+    //std::cout << "CAMERA: " << CAMERA << std::endl;
     if (strcmp(selectedItem, "FPS") == 0)
     {
         CAMERA = FPS;

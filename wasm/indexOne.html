@@ -150,6 +150,8 @@
             var drawArray = function(arr, width, height) 
             {
                 cvDrawImg = document.createElement("canvas");
+                cvDrawImg.width = width;
+                cvDrawImg.height = height;
                 cvDrawImg.id = "canvasDrawImag";
 
                 var ctx = cvDrawImg.getContext('2d');
@@ -159,22 +161,27 @@
                 if (dataImage.data.set) 
                 {
                     dataImage.data.set(arr);
+                    //console.log("1"); 
                 } 
                 else 
                 {
                     // IE9
-                    arr.forEach(function(val, i) {
-                    dataImage.data[i] = val;
+                    arr.forEach(function(val, i) 
+                    {
+                        dataImage.data[i] = val;
                     });
+                    //console.log("2");
                 }
                 if (flipAlbedo != 0)
                 {
                     ctx.putImageData(dataImage, 0,0);
                     ctx.drawImage(cvDrawImg, 0,0);    
+                    //console.log("3");
                 }
                 else 
                 {
                     flip(dataImage, ctx);
+                    //console.log("4");
                 }
             };
 
@@ -252,7 +259,10 @@
             document.getElementById('download').addEventListener("click", function(e) 
             {
                 // Base Color.
+                _flipDecalTrigger();
                 ViewTexture();
+                console.log(`Width: ${widthAlbedo} Height: ${heightAlbedo}`);
+                console.log(res.length);
                 drawArray(res, widthAlbedo, heightAlbedo);
                 var dataURL = cvDrawImg.toDataURL("image/png", 1.0);
                 var a = document.createElement('a');
