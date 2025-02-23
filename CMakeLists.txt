@@ -172,7 +172,7 @@ if(DEFINED EMSCRIPTEN)
     
     # Runtime modules.
     set(RUNTIME_MODULES         "-s EXPORTED_FUNCTIONS=\"['_main','_malloc','_free']\" ")
-    list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=\"['ccall']\"")
+    list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=\"['ccall', 'stringToUTF8']\"")
     #[[list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=[")
     list(APPEND RUNTIME_MODULES "\"ccall\",")
     list(APPEND RUNTIME_MODULES "\"_malloc\"")

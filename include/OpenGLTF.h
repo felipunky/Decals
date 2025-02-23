@@ -83,6 +83,51 @@ namespace GLTF
 
 		return true;
 	}
+
+	bool loadModel(tinygltf::Model &model, const std::string filename)
+	{
+		tinygltf::TinyGLTF loader;
+		std::string err;
+		std::string warn;
+
+		std::string extension = tinygltf::GetFilePathExtension(filename);
+
+		bool res = false;
+
+		if (extension.compare("glb") == 0)
+		{
+			std::cout << "Reading binary glTF" << std::endl;
+			res = loader.LoadBinaryFromFile(&model, &err, &warn, filename.c_str());
+		}
+		else 
+		{
+			std::cout << "Reading ASCII glTF" << std::endl;
+			res = loader.LoadASCIIFromFile(&model, &err, &warn, filename.c_str());
+		}
+		if (!warn.empty()) 
+		{
+			std::cout << "WARN: " << warn << std::endl;
+		}
+
+		if (!err.empty()) 
+		{
+			std::cout << "ERR: " << err << std::endl;
+		}
+
+		if (!res)
+		{
+			std::cout << "Failed to load glTF: " << filename << std::endl;
+		}
+#ifdef OPTIMIZE
+#else
+		else
+		{
+			std::cout << "Loaded glTF: " << filename << std::endl;
+		}
+#endif
+		return res;
+	}
+
 	bool GetGLTFModel(tinygltf::Model* model, std::string& err, std::string& warn, const std::vector<unsigned char>& data)
 	{
 		std::string basedir = "";
@@ -91,6 +136,17 @@ namespace GLTF
 
 		bool result = t.LoadASCIIFromString(model, &err, &warn, reinterpret_cast<const char *>(&data.at(0)), 
 										    static_cast<unsigned int>(data.size()), basedir, tinygltf::REQUIRE_VERSION);
+		return result;
+	}
+
+	bool GetGLBModel(tinygltf::Model* model, std::string& err, std::string& warn, const std::vector<unsigned char>& data)
+	{
+		std::string basedir = "";
+
+		tinygltf::TinyGLTF t;
+
+		bool result = t.LoadBinaryFromMemory(model, &err, &warn, &data.at(0), 
+										    static_cast<unsigned int>(data.size()), basedir);
 		return result;
 	}
 }

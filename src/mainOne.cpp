@@ -237,7 +237,6 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE
     void passGLTF(char* buf)
     {
-        //clearBBox(bboxMin, bboxMax, centroid);
         std::string result = buf;
         tinygltf::Model model;
         std::vector<unsigned char> data(result.begin(), result.end());
@@ -250,6 +249,30 @@ extern "C"
             throw std::runtime_error("Unable to read GLTF!");
             #else
             std::cout << "Unable to read GLTF!" << std::endl;
+            std::cout << "Error: " << err << std::endl;
+            std::cout << "Warning: " << warn << std::endl;
+            #endif
+        }
+        loadGLTF(model);
+        reloadModel();
+        //recomputeCamera();
+        isGLTF = true;
+        data.clear();
+    }
+    EMSCRIPTEN_KEEPALIVE
+    void passGLB(uint8_t* buf, int bufSize)
+    {
+        tinygltf::Model model;
+        std::vector<unsigned char> data = loadArray(buf, bufSize);
+        std::cout << "Data GLB size: " << data.size() << std::endl;
+        std::string err, warn;
+        bool res = GLTF::GetGLBModel(&model, err, warn, data);
+        if (!res)
+        {
+            #ifdef EXCEPTIONS
+            throw std::runtime_error("Unable to read GLTF!");
+            #else
+            std::cout << "Unable to read GLB!" << std::endl;
             std::cout << "Error: " << err << std::endl;
             std::cout << "Warning: " << warn << std::endl;
             #endif
@@ -1054,36 +1077,6 @@ void ObjLoader(std::string inputFile)
 #endif
 }
 
-bool loadModel(tinygltf::Model &model, const char *filename) {
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
-
-    bool res = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
-    if (!warn.empty()) 
-    {
-        std::cout << "WARN: " << warn << std::endl;
-    }
-
-    if (!err.empty()) 
-    {
-        std::cout << "ERR: " << err << std::endl;
-    }
-
-    if (!res)
-    {
-        std::cout << "Failed to load glTF: " << filename << std::endl;
-    }
-#ifdef OPTIMIZE
-#else
-    else
-    {
-        std::cout << "Loaded glTF: " << filename << std::endl;
-    }
-#endif
-    return res;
-}
-
 const float* GetDataFromAccessorGLTF(const tinygltf::Model &model, const tinygltf::Accessor& accessor)
 {
     const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
@@ -1589,7 +1582,8 @@ int main()
 
 #ifdef PILOT_SHIRT
 #ifdef __EMSCRIPTEN__
-    std::string fileName = "Assets/Pilot/shirt_1_lowPoly.gltf";
+    std::string fileName //= "Assets/sh_catWorkBoot.glb";
+                         = "Assets/Pilot/shirt_1_lowPoly.gltf";
 #else
     std::string fileName = "../Assets/Pilot/shirt_1_lowPoly.gltf";
 #endif
@@ -1601,7 +1595,7 @@ int main()
      * Start Read GLTF
      */
     tinygltf::Model modelGLTF;
-    if (!loadModel(modelGLTF, fileName.c_str()))
+    if (!GLTF::loadModel(modelGLTF, fileName))
     {
         #ifdef EXCEPTIONS
         throw std::runtime_error("load GLTF Error!");

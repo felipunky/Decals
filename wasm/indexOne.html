@@ -239,8 +239,21 @@
 
             // GLTF Input
             const gltfInput = document.getElementById("uploadGLTF");
-            gltfInput.addEventListener("change", () =>{
-                readGLTFFile(event.target.files[0]);
+            gltfInput.addEventListener("change", () =>
+            {
+                let fileName = event.target.files[0].name;
+                let splitFileName = fileName.split(".");
+                let fileType = splitFileName[splitFileName.length - 1];
+                if (fileType == "glb")
+                {
+                    console.log("Reading glb file");
+                    readGLBFile(event.target.files[0]);
+                }
+                else
+                {
+                    console.log("Reading gltf file");
+                    readGLTFFile(event.target.files[0]);
+                }
                 isGLTF = true;
                 flipAlbedo = 0;
                 //console.log(isGLTF);
@@ -254,6 +267,18 @@
                 stringToUTF8(text, buffer, text.length + 1);
                 ccall("passGLTF", "null", ["number"], [buffer]);
                 _free(buffer);
+            }
+
+            async function readGLBFile(file)
+            {
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                ccallArrays("passGLB", null, ["array"], [bytes], {heapIn: "HEAPU8"});
+                //console.log(`GLB Size: ${text.length}`);
+                /*var buffer = _malloc(text.length + 1);
+                stringToUTF8(text, buffer, text.length + 1);
+                ccall("passGLB", "null", ["number"], [buffer]);
+                _free(buffer);*/
             }
 
             document.getElementById('download').addEventListener("click", function(e) 
@@ -324,7 +349,7 @@
 <button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadMesh').click()">Upload OBJ</button>
 <button class="button" style="display: inline; height:30px;" onclick="document.getElementById('uploadGLTF').click()">Upload GLTF</button>
 <input id="uploadMesh" style="display:none" type="file" accept=".obj">
-<input id="uploadGLTF" style="display:none" type="file" accept=".gltf">
+<input id="uploadGLTF" style="display:none" type="file" accept=".gltf, .glb">
 <input id="uploadAlbedo" style="display:none" type="file" accept="image/*" value="./image.png">
 <input id="uploadNormal" style="display:none" type="file" accept="image/*" value="./image.png">
 <button class="button" style="display: inline; height:30px;" id="download">Download</button>
