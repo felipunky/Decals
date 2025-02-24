@@ -28,6 +28,9 @@ else()
 endif()
 message(STATUS "Main src file: ${MAIN_SRC}")
 
+# Disable Draco compilation.
+option(COMPILE_DRACO "Disable Draco's compilation" OFF)
+
 if(BASED_ON_SUBDIRECTORY)
     # Add GLM
     add_subdirectory(${SUBMODULES_PATH}/glm)
@@ -40,6 +43,9 @@ if(BASED_ON_SUBDIRECTORY)
 
     # NanoRT
     add_subdirectory(${SUBMODULES_PATH}/nanort)
+
+    # DRACO
+    add_subdirectory(${SUBMODULES_PATH}/draco)
 
 else()
     # Add GLM
@@ -59,6 +65,26 @@ else()
         ${GLM_PATH}
     )
 
+    # Add DRACO 
+    set(DRACO_PATH ${SUBMODULES_PATH}/draco/src)
+    #[[add_library(draco STATIC
+        ${DRACO_PATH}/draco/compression/config/compression_shared.h
+        ${DRACO_PATH}/draco/compression/config/decoder_options.h
+        ${DRACO_PATH}/draco/compression/decode.h
+        ${DRACO_PATH}/draco/compression/decode.cc
+        ${DRACO_PATH}/draco/core/status_or.h
+        ${DRACO_PATH}/draco/core/decoder_buffer.h
+        ${DRACO_PATH}/draco/core/decoder_buffer.cc
+    )
+    target_include_directories(draco PUBLIC
+        ${DRACO_PATH}
+    )]]
+    #[[set(DRACO_STATIC ON CACHE BOOL "Build Draco as a static library" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build Draco as a static library" FORCE)]]
+    if(COMPILE_DRACO)
+        add_subdirectory(${SUBMODULES_PATH}/draco)
+    endif()
+
     # Add tinyGLTF
     set(TINYGLTF_PATH ${SUBMODULES_PATH}/tinygltf)
     set(TINYGLTF_SOURCE
@@ -70,6 +96,8 @@ else()
     )
     target_include_directories(tinygltf PUBLIC
         ${TINYGLTF_PATH}
+        ${DRACO_PATH}
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/build>
     )
 
     # Add tinyobjloader
@@ -94,6 +122,7 @@ else()
     target_include_directories(nanort PUBLIC
         ${NANORT_PATH}
     )
+
 endif()
 # The following libs don't provide CMakeLists.txt's out of the box.
 
@@ -160,6 +189,7 @@ if(DEFINED EMSCRIPTEN)
 
     target_link_libraries(${PROJECT_NAME} PUBLIC
         glm
+        ${CMAKE_BINARY_DIR}/libdraco.a
         tinygltf
         tinyobjloader
         imgui
@@ -234,6 +264,10 @@ if(DEFINED EMSCRIPTEN)
 else()
     message(STATUS "This is not an EMSCRIPTEN build!")
 
+    #[[target_include_directories(draco PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/build>  
+    )]]
+
     # Add shader files
     set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
     file(GLOB_RECURSE SHADERS 
@@ -302,6 +336,7 @@ else()
         OpenGL::GL
         glad
         glm
+        draco
         tinygltf
         tinyobjloader
         imgui

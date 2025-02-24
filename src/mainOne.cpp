@@ -1583,9 +1583,10 @@ int main()
 #ifdef PILOT_SHIRT
 #ifdef __EMSCRIPTEN__
     std::string fileName //= "Assets/sh_catWorkBoot.glb";
-                         = "Assets/Pilot/shirt_1_lowPoly.gltf";
+                         //= "Assets/Pilot/shirt_1_lowPoly.gltf";
+                         = "Assets/PilotShirtDraco.glb";
 #else
-    std::string fileName = "../Assets/Pilot/shirt_1_lowPoly.gltf";
+    std::string fileName = "../Assets/PilotShirtDraco.glb";// "../Assets/Pilot/shirt_1_lowPoly.gltf";
 #endif
     //std::string fileName = "Assets/utahTeapot.gltf";
 #else

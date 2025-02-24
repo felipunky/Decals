@@ -29,6 +29,7 @@
 //#include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 //#include "stb_image_write.h"
+#define TINYGLTF_ENABLE_DRACO
 #define TINYGLTF_NOEXCEPTION
 #define JSON_NOEXCEPTION
 #include "tiny_gltf.h"
