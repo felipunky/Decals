@@ -43,6 +43,8 @@
 
 int WIDTH  = 800,
     HEIGHT = 600;
+int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
+                quarterHeight = halfHeight / 2;
 const float SPEED = 5.0f;
 // How much time between frames.
 float deltaTime = 0.0f, lastFrame = 0.0f;
@@ -99,7 +101,7 @@ bool isActiveFPS = false;
  /**
  * Start User Interaction
  */
-TYPE_OF_CAMERA CAMERA = TURN_TABLE;
+TYPE_OF_CAMERA CAMERA = TRACK_BALL;
 // OpenGL is right handed so the last component corresponds to move forward/backwards.
 int mousePositionX, mousePositionY;
 glm::vec3 mouse;
@@ -125,14 +127,20 @@ struct CameraState
     glm::vec2 angles = { 0.0f, 0.0f };
     // zoom is the position of the camera along its local forward axis, affected by the scroll wheel
     float zoom = -10.0f;
+    // position is the center on to which the camera rotates around.
+    glm::vec2 position = { 0.0f, 0.0f };
 };
 CameraState m_cameraState;
 
 struct DragState {
     // Whether a drag action is ongoing (i.e., we are between mouse press and mouse release)
     bool active = false;
+    // Mouse wheel being pressed.
+    bool mouseWheelButtonActive = false;
     // The position of the mouse at the beginning of the drag action
     glm::vec2 startMouse;
+    // The position of the mouse at the beginning of the mouse wheel button action.
+    glm::vec2 mouseWheelActionStartMouse;
     // The camera state at the beginning of the drag action
     CameraState startCameraState;
 
@@ -243,6 +251,7 @@ extern "C"
         std::cout << "Data GLTF size: " << data.size() << std::endl;
         std::string err, warn;
         bool res = GLTF::GetGLTFModel(&model, err, warn, data);
+        //assert(res);
         if (!res)
         {
             #ifdef EXCEPTIONS
@@ -1583,8 +1592,8 @@ int main()
 #ifdef PILOT_SHIRT
 #ifdef __EMSCRIPTEN__
     std::string fileName //= "Assets/sh_catWorkBoot.glb";
-                         //= "Assets/Pilot/shirt_1_lowPoly.gltf";
-                         = "Assets/PilotShirtDraco.glb";
+                         = "Assets/Pilot/shirt_1_lowPoly.gltf";
+                         //= "Assets/PilotShirtDraco.glb";
 #else
     std::string fileName = "../Assets/PilotShirtDraco.glb";// "../Assets/Pilot/shirt_1_lowPoly.gltf";
 #endif
@@ -1690,8 +1699,6 @@ int main()
 
     int click = 0;
 
-    int halfWidth = WIDTH/2, halfHeight = HEIGHT/2;
-
     hitPos = glm::vec3(0.0, 0.0, 0.0);
     hitNor = glm::vec3(1.0, 1.0, 1.0);
 
@@ -1711,7 +1718,7 @@ int main()
         view = glm::lookAt(camPos, camPos + camFront, camUp);
         viewPinned = view;
     }
-    else if (CAMERA == TURN_TABLE)
+    else if (CAMERA == TRACK_BALL)
     {
         updateViewMatrix();
         recomputeCamera();
@@ -1761,25 +1768,25 @@ void updateViewMatrix()
     glm::mat4 rotate = glm::mat4_cast(orientation);
     
     glm::mat4 translate = glm::mat4(1.0f);
-    glm::vec3 eye = centroid - glm::vec3(0.0f, 0.0f, m_cameraState.zoom);
+    glm::vec3 eye = centroid - glm::vec3(-m_cameraState.position, m_cameraState.zoom);
     translate = glm::translate(translate, -eye);
     view = translate * rotate;
 }
 
 void mouse_press(SDL_Event& event)
 {
+    mouse = glm::vec3(event.motion.x, -event.motion.y + HEIGHT, 1.0f);
     switch (event.button.button)
     {    
         case SDL_BUTTON_LEFT:
         {
-            mouse = glm::vec3(event.motion.x, -event.motion.y + HEIGHT, 1.0f);
             if (CAMERA == FPS)
             {
                 isActiveFPS = true;
                 lastX = mouse.x;
                 lastY = mouse.y;
             }
-            else if (CAMERA == TURN_TABLE)
+            else if (CAMERA == TRACK_BALL)
             {
                 m_drag.active = true;
                 m_drag.startMouse.x = mouse.x;
@@ -1793,6 +1800,17 @@ void mouse_press(SDL_Event& event)
             // Raytracing.
             isTracing = true;
             break;
+        }
+        if (CAMERA == TRACK_BALL)
+        {
+            case SDL_BUTTON_MIDDLE:
+            {
+                m_drag.mouseWheelButtonActive = true;
+                m_drag.mouseWheelActionStartMouse.x = mouse.x;
+                m_drag.mouseWheelActionStartMouse.y = mouse.y;
+                m_drag.startCameraState = m_cameraState;
+                break;
+            }
         }
         default:
         {
@@ -1811,7 +1829,7 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
             {
                 isActiveFPS = false;
             }
-            else if (CAMERA == TURN_TABLE)
+            else if (CAMERA == TRACK_BALL)
             {
                 m_drag.active = false;
             }
@@ -1821,6 +1839,14 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
         {
             isTracing = false;
             break;
+        }
+        if (CAMERA == TRACK_BALL)
+        {
+            case SDL_BUTTON_MIDDLE:
+            {
+                m_drag.mouseWheelButtonActive = false;
+                break;
+            }
         }
         default:
         {
@@ -1863,14 +1889,24 @@ void mouse_motion(SDL_Event& event)
             view = glm::lookAt(camPos, camPos + camFront, camUp);
         }
     }
-    else if (CAMERA == TURN_TABLE)
+    else if (CAMERA == TRACK_BALL)
     {
+        // Rotate.
         if (m_drag.active)
         {
             glm::vec2 delta = (glm::vec2(m_drag.startMouse.x, currentMouse.y) -
-                glm::vec2(currentMouse.x, m_drag.startMouse.y)) *
-                m_drag.sensitivity;
+                               glm::vec2(currentMouse.x, m_drag.startMouse.y)) *
+                               m_drag.sensitivity;
             m_cameraState.angles = m_drag.startCameraState.angles + delta;
+            updateViewMatrix();
+        }
+        // Pan.
+        if (m_drag.mouseWheelButtonActive)
+        {
+            glm::vec2 delta = (m_drag.mouseWheelActionStartMouse - 
+                               glm::vec2(currentMouse.x, currentMouse.y)) *
+                               m_drag.sensitivity;
+            m_cameraState.position = m_drag.startCameraState.position + delta;
             updateViewMatrix();
         }
     }
@@ -1885,7 +1921,7 @@ void mouse_motion(SDL_Event& event)
 
 void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
 {
-    if (CAMERA == TURN_TABLE)
+    if (CAMERA == TRACK_BALL)
     {
         m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
         updateViewMatrix();
@@ -1981,6 +2017,14 @@ void main_loop()
             break;
         }
         
+        // Only do input handling on the perspective viewport.
+        bool isInPerspectiveViewport = (event.motion.x < halfWidth ? true : false);
+
+        if (!isInPerspectiveViewport)
+        {
+            break;
+        }
+
         switch(event.type)
         {
             case SDL_MOUSEBUTTONDOWN:
@@ -2037,7 +2081,7 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
-    static const char* cameraTypes[]{"FPS", "Turntable"};
+    static const char* cameraTypes[]{"FPS", "Trackball"};
     static const char* selectedItem = cameraTypes[1];
     if (ImGui::BeginCombo("Camera", selectedItem, 0))
     {
@@ -2057,10 +2101,10 @@ void main_loop()
         CAMERA = FPS;
         //std::cout << "FPS" << std::endl;
     }
-    else if (strcmp(selectedItem, "Turntable") == 0)
+    else if (strcmp(selectedItem, "Trackball") == 0)
     {
-        CAMERA = TURN_TABLE;
-        //std::cout << "Turntable" << std::endl;
+        CAMERA = TRACK_BALL;
+        //std::cout << "Trackball" << std::endl;
     }
     if (ImGui::Button("Enable Normal Map"))
     {

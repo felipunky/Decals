@@ -29,7 +29,7 @@ endif()
 message(STATUS "Main src file: ${MAIN_SRC}")
 
 # Disable Draco compilation.
-option(COMPILE_DRACO "Disable Draco's compilation" OFF)
+option(COMPILE_DRACO "Disable Draco's compilation" ON)
 
 if(BASED_ON_SUBDIRECTORY)
     # Add GLM
@@ -48,6 +48,7 @@ if(BASED_ON_SUBDIRECTORY)
     add_subdirectory(${SUBMODULES_PATH}/draco)
 
 else()
+    message(STATUS "Not based on subdirectory: ${BASED_ON_SUBDIRECTORY}")
     # Add GLM
     set(GLM_PATH ${SUBMODULES_PATH}/glm)
     set(GLM_SOURCE
@@ -81,7 +82,10 @@ else()
     )]]
     #[[set(DRACO_STATIC ON CACHE BOOL "Build Draco as a static library" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build Draco as a static library" FORCE)]]
-    if(COMPILE_DRACO)
+    if(DEFINED EMSCRIPTEN)#COMPILE_DRACO)
+        message(STATUS "Not compiling draco!")
+    else()
+        message(STATUS "Compiling draco!")
         add_subdirectory(${SUBMODULES_PATH}/draco)
     endif()
 
