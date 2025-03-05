@@ -1,4 +1,4 @@
-#version 300 es
+#version 150 core
 precision mediump float;
 
 in vec3 positions;                                                         
@@ -7,7 +7,10 @@ in mat3 TBN;
 
 // layout (location = 0) out vec3 gPosition;
 // layout (location = 0) out vec4 gNormal;
-layout (location = 0) out vec4 gAlbedo;
+
+//layout (location = 0)
+out vec4 gAlbedo;
+
 // layout (location = 3) out vec3 gMetallic;
 // layout (location = 4) out vec3 gRoughness;
 // layout (location = 5) out vec3 gAO;

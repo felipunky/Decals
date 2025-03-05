@@ -63,7 +63,7 @@ public:
 	// ------------------------------------------------------------------------
 	Shader()
 	{}
-	Shader(const char* vertexPath, const char* fragmentPath)
+	Shader(const char* vertexPath, const char* fragmentPath, const std::vector<std::string>& attribLocationsNames)
 	{
 		// 1. retrieve the vertex/fragment source code from filePath
 		std::string vertexCode;
@@ -125,6 +125,7 @@ public:
 		checkCompileErrors(fragment, "FRAGMENT");
 		// shader Program
 		ID = glCreateProgram();
+        setAttributeLocations(attribLocationsNames);
 		glAttachShader(ID, vertex);
 		glAttachShader(ID, fragment);
 		glLinkProgram(ID);
@@ -140,6 +141,20 @@ public:
 	{
 		glUseProgram(ID);
 	}
+    // Set attribute location
+    // ------------------------------------------------------------------------
+    void setAttributeLocation(const int index, const std::string& name)
+    {
+        glBindAttribLocation(ID, index, name.c_str());
+    }
+    void setAttributeLocations(const std::vector<std::string>& names)
+    {
+        for (uint8_t i = 0; i < names.size(); ++i)
+        {
+            setAttributeLocation((int) i, names[i]);
+        }
+    }
+    // ------------------------------------------------------------------------
 	// utility uniform functions
 	// ------------------------------------------------------------------------
 	void setBool(const std::string& name, bool value) const

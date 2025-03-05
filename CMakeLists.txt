@@ -334,19 +334,35 @@ else()
         ${INCLUDE_PATH}
     )
 
-    target_link_libraries(${PROJECT_NAME} PUBLIC
-        SDL2::SDL2 
-        SDL2::SDL2main
-        OpenGL::GL
-        glad
-        glm
-        draco
-        tinygltf
-        tinyobjloader
-        imgui
-        ImGuizmo
-        nanort
-    )
+    if (WIN32)
+        target_link_libraries(${PROJECT_NAME} PUBLIC
+            SDL2::SDL2 
+            SDL2::SDL2main
+            OpenGL::GL
+            glad
+            glm
+            draco
+            tinygltf
+            tinyobjloader
+            imgui
+            ImGuizmo
+            nanort
+        )
+    elseif (APPLE)
+        target_link_libraries(${PROJECT_NAME} PUBLIC
+            SDL2::SDL2 
+            SDL2::SDL2main
+            OpenGL::GL
+            glad
+            glm
+            draco::draco
+            tinygltf
+            tinyobjloader
+            imgui
+            ImGuizmo
+            nanort
+        )
+    endif()
 
     # Set Windows-specific properties
     if(WIN32)
@@ -362,19 +378,19 @@ else()
             $<TARGET_FILE_DIR:SDL2::SDL2>/SDL2.dll
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
         )
-        # Copy shaders folder.
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${SHADERS_PATH}
-            ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
-        )
-        # ASSETS
-        # Copy Assets folder on the build folder.
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${ASSETS_PATH}
-            ${CMAKE_CURRENT_SOURCE_DIR}/build/Assets
-        )
     endif()
+    # Copy shaders folder.
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SHADERS_PATH}
+        ${CMAKE_CURRENT_SOURCE_DIR}/build/shaders
+    )
+    # ASSETS
+    # Copy Assets folder on the build folder.
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${ASSETS_PATH}
+        ${CMAKE_CURRENT_SOURCE_DIR}/build/Assets
+    )
 endif()
 

@@ -1,10 +1,12 @@
-#version 300 es
+#version 150 core
 precision mediump float;
 
-layout (location = 0) in vec3 Position;
-layout (location = 1) in vec2 TexCoords;
+//layout (location = 0)
+in vec3 VertexPosition;
+//layout (location = 1)
+//in vec2 VertexTextureCoords;
 
-out vec2 texCoords;
+//out vec2 texCoords;
 
 uniform mat4 projection;
 uniform mat4 view;
@@ -12,7 +14,7 @@ uniform mat4 model;
 
 void main()
 {
-    texCoords = TexCoords;
-    vec4 worldPos = projection * view * model * vec4(Position, 1.0);
+    //texCoords = VertexTextureCoords;
+    vec4 worldPos = projection * view * model * vec4(VertexPosition, 1.0);
     gl_Position = worldPos;
 }

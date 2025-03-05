@@ -51,7 +51,7 @@ float deltaTime = 0.0f, lastFrame = 0.0f;
 
 SDL_Window* window;
 SDL_GLContext context;
-const char* glsl_version = "#version 300 es";
+const char* glsl_version = nullptr;//"#version 300 es";
 static bool main_loop_running = true;
 static bool show_demo_window = true;
 
@@ -137,6 +137,7 @@ struct DragState {
     bool active = false;
     // Mouse wheel being pressed.
     bool mouseWheelButtonActive = false;
+    uint mouseWheelButtonActiveSince = 0u;
     // The position of the mouse at the beginning of the drag action
     glm::vec2 startMouse;
     // The position of the mouse at the beginning of the mouse wheel button action.
@@ -1390,6 +1391,7 @@ float max(const glm::vec3& x)
 
 bool init()
 {
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
     {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
@@ -1405,7 +1407,22 @@ bool init()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
-
+#endif
+#ifdef __APPLE__
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
+    
     // Create SDL window
     window = SDL_CreateWindow("OpenGL with SDL2 & GLAD",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -1434,6 +1451,7 @@ bool init()
 
     // Print OpenGL version
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+    std::cout << "GL Shading Language Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
     // Enable V-Sync
     /*if (SDL_GL_SetSwapInterval(1) == -1)
@@ -1467,18 +1485,48 @@ ImGuiIO initImgui()
 
 void initializeShaderSource()
 {
+    // Set attribute locations. We need this given that we want to be
+    // able to support Mac and on Mac, there's no glsl version that
+    // supports layout qualifiers.
+    std::string vertexPositionAttributeQualifierName = "VertexPosition",
+                normalPositionAttributeQualifierName = "VertexNormals",
+                texCoordsPositionAttributeQualiferName = "VertexTextureCoords",
+                vertexTangentPositionAttributeQualifierName = "VertexTangents";
+    std::vector<std::string> depthPrePassAttributeLocations(1);
+    depthPrePassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    
+    std::vector<std::string> geometryPassAttributeLocations(4);
+    geometryPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    geometryPassAttributeLocations[1] = normalPositionAttributeQualifierName;
+    geometryPassAttributeLocations[2] = texCoordsPositionAttributeQualiferName;
+    geometryPassAttributeLocations[3] = vertexTangentPositionAttributeQualifierName;
+    
+    std::vector<std::string> deferredPassAttributeLocations(4);
+    deferredPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    deferredPassAttributeLocations[1] = normalPositionAttributeQualifierName;
+    deferredPassAttributeLocations[2] = texCoordsPositionAttributeQualiferName;
+    deferredPassAttributeLocations[3] = vertexTangentPositionAttributeQualifierName;
+    
+    std::vector<std::string> hitPositionAttributeLocations(1);
+    deferredPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    //deferredPassAttributeLocations[1] = texCoordsPositionAttributeQualiferName;
+    
+    std::vector<std::string> decalsPassAttributeLocations(3);
+    decalsPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    decalsPassAttributeLocations[1] = normalPositionAttributeQualifierName;
+    decalsPassAttributeLocations[2] = texCoordsPositionAttributeQualiferName;
 #ifdef __EMSCRIPTEN__
-    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag");   
-    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag");   
-    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag");
-    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag");
-    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag");
+    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag", depthPrePassAttributeLocations);
+    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag", geometryPassAttributeLocations);
+    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag", deferredPassAttributeLocations);
+    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag", hitPositionAttributeLocations);
+    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag", decalsPassAttributeLocations);
 #else
-    depthPrePass  = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag");   
-    geometryPass  = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag");   
-    deferredPass  = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag");
-    hitPosition   = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag");
-    decalsPass    = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag");
+    depthPrePass  = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag", depthPrePassAttributeLocations);
+    geometryPass  = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag", geometryPassAttributeLocations);
+    deferredPass  = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag", deferredPassAttributeLocations);
+    hitPosition   = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag", hitPositionAttributeLocations);
+    decalsPass    = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag", decalsPassAttributeLocations);
 #endif
 }
 
@@ -1928,9 +1976,34 @@ void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
     }
 }
 
-void key_down(int& keyCode)
+void key_down(SDL_Event& event)
 {
-    if (CAMERA == FPS)
+    int keyCode = event.key.keysym.sym;
+    
+    if (CAMERA == TRACK_BALL)
+    {
+        switch(keyCode)
+        {
+            case SDLK_s:
+            //case SDLK_LSHIFT:
+            {
+                m_drag.mouseWheelButtonActive = true;
+                //if (m_drag.mouseWheelButtonActiveSince == 0u)
+                {
+                    //m_drag.mouseWheelActionStartMouse.x = (float)(event.motion.x);
+                    //m_drag.mouseWheelActionStartMouse.y = (float)(-event.motion.y + HEIGHT);
+                    m_drag.startCameraState = m_cameraState;
+                }
+                m_drag.mouseWheelButtonActiveSince++;
+                break;
+            }
+            default:
+            {
+                break;
+            }
+        }
+    }
+    else if (CAMERA == FPS)
     {
         float camSpeed = deltaTime * SPEED;
         switch (keyCode)
@@ -1965,6 +2038,31 @@ void key_down(int& keyCode)
             }
         }
         view = glm::lookAt(camPos, camPos + camFront, camUp);
+    }
+}
+
+void key_up(SDL_Event& event)
+{
+    if (CAMERA == TRACK_BALL)
+    {
+        int key = event.key.keysym.sym;
+        switch(key)
+        {
+            case SDLK_s:
+            //case SDLK_LSHIFT:
+            {
+                //m_drag.mouseWheelActionStartMouse.x = event.motion.x;
+                //m_drag.mouseWheelActionStartMouse.y = -event.motion.y + HEIGHT;
+                std::cout << "S Key Out" << std::endl;
+                m_drag.mouseWheelButtonActive = false;
+                m_drag.mouseWheelButtonActiveSince = 0u;
+                break;
+            }
+            default:
+            {
+                break;
+            }
+        }
     }
 }
 
@@ -2054,7 +2152,12 @@ void main_loop()
             }
             case SDL_KEYUP:
             {
-                if (event.key.keysym.sym == SDLK_ESCAPE)
+                int key = event.key.keysym.sym;
+                if (key != SDLK_ESCAPE)
+                {
+                    key_up(event);
+                }
+                else
                 {
                     main_loop_running = false;
                 }
@@ -2062,7 +2165,7 @@ void main_loop()
             }
             case SDL_KEYDOWN:
             {
-                key_down(event.key.keysym.sym);
+                key_down(event);
                 break;
             }
             default:
