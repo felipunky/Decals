@@ -1,4 +1,3 @@
-#version 150 core
 precision mediump float;
 
 //layout (location = 0)

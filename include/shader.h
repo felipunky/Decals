@@ -40,6 +40,11 @@
 #if 0
 	#define OPTIMIZE
 #endif
+
+#ifndef uint
+#define uint unsigned int
+#endif
+
 // 0 for FPS 1 for Turntable
 //#define CAMERA 1
 enum TYPE_OF_CAMERA
@@ -63,11 +68,11 @@ public:
 	// ------------------------------------------------------------------------
 	Shader()
 	{}
-	Shader(const char* vertexPath, const char* fragmentPath, const std::vector<std::string>& attribLocationsNames)
+	Shader(const char* vertexPath, const char* fragmentPath, const std::vector<std::string>& attribLocationsNames, const std::string& GLSLVersion)
 	{
 		// 1. retrieve the vertex/fragment source code from filePath
-		std::string vertexCode;
-		std::string fragmentCode;
+		std::string vertexCode   = GLSLVersion;
+		std::string fragmentCode = GLSLVersion;
 		std::ifstream vShaderFile;
 		std::ifstream fShaderFile;
 		// ensure ifstream objects can throw exceptions:
@@ -87,8 +92,8 @@ public:
 			vShaderFile.close();
 			fShaderFile.close();
 			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
+			vertexCode += vShaderStream.str();
+			fragmentCode += fShaderStream.str();
 		}
 		catch (std::ifstream::failure& e)
 		{
@@ -106,8 +111,10 @@ public:
 		vShaderFile.close();
 		fShaderFile.close();
 		// convert stream into string
-		vertexCode = vShaderStream.str();
-		fragmentCode = fShaderStream.str();
+		vertexCode += vShaderStream.str();
+		fragmentCode += fShaderStream.str();
+		/*std::string addVersionVertexCode = "#version 300 es\n" + vertexCode;
+		std::cout << "Vertex code: " << addVersionVertexCode << std::endl;*/
 		#endif
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();

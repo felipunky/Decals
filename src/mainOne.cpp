@@ -70,6 +70,14 @@ Shader depthPrePass = Shader(),
        deferredPass = Shader(),
        hitPosition  = Shader(),
        decalsPass   = Shader();
+// Pass GLSL version to the shaders.
+#if defined(_WIN32)
+std::string GLSLVersion = "#version 150 core\n";
+#elif defined(__APPLE__)
+std::string GLSLVersion = "#version 150 core\n";
+#elif defined(__EMSCRIPTEN__)
+std::string GLSLVersion = "#version 300 es\n";
+#endif
 // Buffers.
 unsigned int fbo, dBuffer;
 // Attached textures.
@@ -1516,17 +1524,17 @@ void initializeShaderSource()
     decalsPassAttributeLocations[1] = normalPositionAttributeQualifierName;
     decalsPassAttributeLocations[2] = texCoordsPositionAttributeQualiferName;
 #ifdef __EMSCRIPTEN__
-    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag", depthPrePassAttributeLocations);
-    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag", geometryPassAttributeLocations);
-    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag", deferredPassAttributeLocations);
-    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag", hitPositionAttributeLocations);
-    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag", decalsPassAttributeLocations);
+    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag",      depthPrePassAttributeLocations, GLSLVersion);
+    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag",      geometryPassAttributeLocations, GLSLVersion);
+    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag", deferredPassAttributeLocations, GLSLVersion);
+    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag",  hitPositionAttributeLocations,  GLSLVersion);
+    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag",       decalsPassAttributeLocations,   GLSLVersion);
 #else
-    depthPrePass  = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag", depthPrePassAttributeLocations);
-    geometryPass  = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag", geometryPassAttributeLocations);
-    deferredPass  = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag", deferredPassAttributeLocations);
-    hitPosition   = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag", hitPositionAttributeLocations);
-    decalsPass    = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag", decalsPassAttributeLocations);
+    depthPrePass  = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag",      depthPrePassAttributeLocations, GLSLVersion);
+    geometryPass  = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag",      geometryPassAttributeLocations, GLSLVersion);
+    deferredPass  = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag", deferredPassAttributeLocations, GLSLVersion);
+    hitPosition   = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag",  hitPositionAttributeLocations,  GLSLVersion);
+    decalsPass    = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag",       decalsPassAttributeLocations,   GLSLVersion);
 #endif
 }
 
