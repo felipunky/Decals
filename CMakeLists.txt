@@ -19,13 +19,7 @@ set(SUBMODULES_PATH ${PROJECT_SOURCE_DIR}/submodules)
 # we don't want this. 
 option(BASED_ON_SUBDIRECTORY "Use existing CMakeLists.txt from each submodule. This has the issue that it creates the test projects from each submodule." OFF)
 
-# Try and compile the original project to EMCC
-option(ORIGINAL_PROJECT "Compile original project" ON)
-if(ORIGINAL_PROJECT)
-    set(MAIN_SRC ${SOURCE_PATH}/mainOne.cpp)
-else()
-    set(MAIN_SRC ${SOURCE_PATH}/main.cpp)
-endif()
+set(MAIN_SRC ${SOURCE_PATH}/main.cpp)
 message(STATUS "Main src file: ${MAIN_SRC}")
 
 # Disable Draco compilation.
@@ -247,15 +241,9 @@ if(DEFINED EMSCRIPTEN)
 	#set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS    "-O3 -s WASM=1 -s FULL_ES3=1 -s GL_DEBUG=1 -s MIN_WEBGL_VERSION=2 -s MAX_WEBGL_VERSION=2 --embed-file '${SHADERS_PATH_EMSCRIPTEN}' --preload-file '${ASSETS_PATH_EMSCRIPTEN}' -s ASSERTIONS")
 
     # Add index.html to the wasm build folder.
-    if(ORIGINAL_PROJECT)
-        file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/indexOne.html
-        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
-        )
-    else()
-        file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/index.html
-            DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
-        )
-    endif()
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/index.html
+    DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+    )
     # Add wasm-arrays.js to the wasm build folder.
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/wasm-arrays.min.js
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
