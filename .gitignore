@@ -13,7 +13,6 @@ _deps
 
 ##### Build folders
 build/
-buildWASM/
 submodules/draco/build
 
 ##### Windows from https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7
@@ -22,6 +21,12 @@ Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
 ehthumbs_vista.db
+
+#### WASM
+# Ninja
+*.ninja_deps
+*.ninja_log
+*.ninja
 
 # Dump file
 *.stackdump
