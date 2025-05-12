@@ -11,6 +11,9 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
+##### VSCode
+.vscode/
+
 ##### Build folders
 build/
 submodules/draco/build
