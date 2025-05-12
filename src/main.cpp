@@ -2170,7 +2170,7 @@ void main_loop()
             }
             case SDL_KEYDOWN:
             {
-                key_down(event.key.keysym.sym);
+                key_down(event);
                 break;
             }
             case SDL_WINDOWEVENT:
