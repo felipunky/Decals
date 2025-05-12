@@ -163,6 +163,22 @@ target_include_directories(ImGuizmo PUBLIC
 #MESSAGE(STATUS "HS: ${HS}")
 # file(GLOB_RECURSE CPPS "${SOURCE_PATH}/*.cpp")
 
+# Add shader files
+set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
+file(GLOB_RECURSE SHADERS 
+    ${SHADERS_PATH}/*.glsl
+    ${SHADERS_PATH}/*.vert
+    ${SHADERS_PATH}/*.frag
+)
+# Add asset files
+set(ASSETS_PATH ${PROJECT_SOURCE_DIR}/Assets)
+file(GLOB_RECURSE ASSETS
+    ${ASSETS_PATH}/*.gltf
+    ${ASSETS_PATH}/*.obj
+    ${ASSETS_PATH}/*.png
+    ${ASSETS_PATH}/*.jpg
+)
+
 if(DEFINED EMSCRIPTEN)
     message(STATUS "This is an EMSCRIPTEN build!")
 
@@ -195,8 +211,22 @@ if(DEFINED EMSCRIPTEN)
         nanort
     )
 
-    set(SHADERS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/shaders@/shaders)
-    set(ASSETS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/Assets@/Assets)
+    # Copy shaders folder.
+    add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SHADERS_PATH}
+        ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders
+    )
+    # ASSETS
+    # Copy Assets folder on the build folder.
+    add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${ASSETS_PATH}
+        ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets
+    )
+
+    set(SHADERS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders@/shaders)
+    set(ASSETS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets@/Assets)
     
     # Runtime modules.
     set(RUNTIME_MODULES         "-s EXPORTED_FUNCTIONS=\"['_main','_malloc','_free']\" ")
@@ -242,7 +272,7 @@ if(DEFINED EMSCRIPTEN)
 
     # Add index.html to the wasm build folder.
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/index.html
-    DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
     )
     # Add wasm-arrays.js to the wasm build folder.
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/wasm-arrays.min.js
@@ -260,21 +290,6 @@ else()
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/build>  
     )]]
 
-    # Add shader files
-    set(SHADERS_PATH ${PROJECT_SOURCE_DIR}/shaders)
-    file(GLOB_RECURSE SHADERS 
-        ${SHADERS_PATH}/*.glsl
-        ${SHADERS_PATH}/*.vert
-        ${SHADERS_PATH}/*.frag
-    )
-    # Add asset files
-    set(ASSETS_PATH ${PROJECT_SOURCE_DIR}/Assets)
-    file(GLOB_RECURSE ASSETS
-        ${ASSETS_PATH}/*.gltf
-        ${ASSETS_PATH}/*.obj
-        ${ASSETS_PATH}/*.png
-        ${ASSETS_PATH}/*.jpg
-    )
     # Pass the shaders as a header for the VS project to recognize them.
     set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
     # Copy shaders to build folder so that the .exe runs on Windows.
