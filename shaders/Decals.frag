@@ -18,7 +18,7 @@ uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
 
-#define BIAS 1e-4
+#define BIAS 1e-5
 
 bool CheckBox(vec3 uv)
 {
@@ -36,7 +36,7 @@ void main()
         clip = 0.;
     }
     float depth = texture(iDepth, decalUV.xy).r;
-    if ((decalUV.z - BIAS) > depth)
+    if (abs(decalUV.z - BIAS) > depth)
     {
         decalUV *= 0.;
         clip = 0.;

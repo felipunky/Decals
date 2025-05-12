@@ -31,7 +31,7 @@ if (ENVIRONMENT_IS_NODE) {
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: C:\Users\feli2\AppData\Local\Temp\tmpkagjdga1.js
+// include: C:\Users\feli2\AppData\Local\Temp\tmpq01p5007.js
 
   Module['expectedDataFileDownloads'] ??= 0;
   Module['expectedDataFileDownloads']++;
@@ -149,9 +149,6 @@ Module['FS_createPath']("/Assets", "astronaut", true, true);
 Module['FS_createPath']("/Assets/astronaut", "textures", true, true);
 Module['FS_createPath']("/Assets", "caterpillar-work-boot", true, true);
 Module['FS_createPath']("/Assets/caterpillar-work-boot", "source", true, true);
-Module['FS_createPath']("/Assets/caterpillar-work-boot/source", "sh_catWorkBoot_cc", true, true);
-Module['FS_createPath']("/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc", "sh_catWorkBoot_cc", true, true);
-Module['FS_createPath']("/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc", "gltf", true, true);
 Module['FS_createPath']("/Assets/caterpillar-work-boot", "textures", true, true);
 Module['FS_createPath']("/Assets", "clay-pbr", true, true);
 Module['FS_createPath']("/Assets/clay-pbr", "source", true, true);
@@ -224,25 +221,25 @@ Module['FS_createPath']("/", "shaders", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/Assets/Monkey.bin", "start": 0, "end": 68656}, {"filename": "/Assets/Monkey.glb", "start": 68656, "end": 138340}, {"filename": "/Assets/Monkey.gltf", "start": 138340, "end": 139792}, {"filename": "/Assets/Monkey.mtl", "start": 139792, "end": 139845}, {"filename": "/Assets/Monkey.obj", "start": 139845, "end": 202870}, {"filename": "/Assets/Pilot/shirt_1_lowPoly.gltf", "start": 202870, "end": 834570}, {"filename": "/Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg", "start": 834570, "end": 869476}, {"filename": "/Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg", "start": 869476, "end": 1002349}, {"filename": "/Assets/PilotShirt.glb", "start": 1002349, "end": 1643925}, {"filename": "/Assets/PilotShirtDraco.glb", "start": 1643925, "end": 1858717}, {"filename": "/Assets/Textures/Batman.jpg", "start": 1858717, "end": 1900016}, {"filename": "/Assets/Textures/Watchmen.png", "start": 1900016, "end": 1997296}, {"filename": "/Assets/astronaut/license.txt", "start": 1997296, "end": 1997958}, {"filename": "/Assets/astronaut/scene.bin", "start": 1997958, "end": 2643334}, {"filename": "/Assets/astronaut/scene.gltf", "start": 2643334, "end": 2647292}, {"filename": "/Assets/astronaut/textures/material_0_baseColor.png", "start": 2647292, "end": 3903300}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/README.txt", "start": 3903300, "end": 3904257}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/gltf/sh_catWorkBoot.glb", "start": 3904257, "end": 4518457}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot.glb", "start": 4518457, "end": 5132657}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot.mtl", "start": 5132657, "end": 5132772}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot.obj", "start": 5132772, "end": 7442294}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot_albedo.jpg", "start": 7442294, "end": 19086000}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot_ao.jpg", "start": 19086000, "end": 23587414}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot_nrm.jpg", "start": 23587414, "end": 40991356}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot_rough.jpg", "start": 40991356, "end": 49144383}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot_cc/sh_catWorkBoot_cc/sh_catWorkBoot_specular.jpg", "start": 49144383, "end": 62008113}, {"filename": "/Assets/caterpillar-work-boot/textures/internal_ground_ao_texture.jpeg", "start": 62008113, "end": 62028347}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_albedo.jpeg", "start": 62028347, "end": 74669710}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_ao.jpeg", "start": 74669710, "end": 79224443}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_nrm.jpeg", "start": 79224443, "end": 97833263}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_rough.jpeg", "start": 97833263, "end": 106679785}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_specular.jpeg", "start": 106679785, "end": 120652345}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/low_uv1sm.obj", "start": 120652345, "end": 122611857}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_baseTexBaked.jpg", "start": 122611857, "end": 132937050}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_normals.jpg", "start": 132937050, "end": 142419013}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_occlusion.jpg", "start": 142419013, "end": 146343561}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/roughness.jpg", "start": 146343561, "end": 148372324}, {"filename": "/Assets/clay-pbr/textures/map_baseTexBaked.jpeg", "start": 148372324, "end": 158663952}, {"filename": "/Assets/sh_catWorkBoot.glb", "start": 158663952, "end": 159278152}, {"filename": "/Assets/sh_catWorkBoot_draco.glb", "start": 159278152, "end": 159333932}, {"filename": "/Assets/utahTeapot.gltf", "start": 159333932, "end": 160007678}], "remote_package_size": 160021618});
+    loadPackage({"files": [{"filename": "/Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg", "start": 0, "end": 34906}, {"filename": "/Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg", "start": 34906, "end": 167779}, {"filename": "/Assets/PilotShirtDraco.glb", "start": 167779, "end": 382571}, {"filename": "/Assets/Textures/Batman.jpg", "start": 382571, "end": 423870}, {"filename": "/Assets/Textures/Watchmen.png", "start": 423870, "end": 521150}, {"filename": "/Assets/astronaut/license.txt", "start": 521150, "end": 521812}, {"filename": "/Assets/astronaut/scene.bin", "start": 521812, "end": 1167188}, {"filename": "/Assets/astronaut/scene.gltf", "start": 1167188, "end": 1171146}, {"filename": "/Assets/astronaut/textures/material_0_baseColor.png", "start": 1171146, "end": 2427154}, {"filename": "/Assets/caterpillar-work-boot/source/sh_catWorkBoot.glb", "start": 2427154, "end": 3041354}, {"filename": "/Assets/caterpillar-work-boot/textures/internal_ground_ao_texture.jpeg", "start": 3041354, "end": 3061588}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_albedo.jpeg", "start": 3061588, "end": 15702951}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_ao.jpeg", "start": 15702951, "end": 20257684}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_nrm.jpeg", "start": 20257684, "end": 38866504}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_rough.jpeg", "start": 38866504, "end": 47713026}, {"filename": "/Assets/caterpillar-work-boot/textures/sh_catWorkBoot_specular.jpeg", "start": 47713026, "end": 61685586}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/low_uv1sm.obj", "start": 61685586, "end": 63645098}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_baseTexBaked.jpg", "start": 63645098, "end": 73970291}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_normals.jpg", "start": 73970291, "end": 83452254}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/map_occlusion.jpg", "start": 83452254, "end": 87376802}, {"filename": "/Assets/clay-pbr/source/low_uv1sm/roughness.jpg", "start": 87376802, "end": 89405565}, {"filename": "/Assets/clay-pbr/textures/map_baseTexBaked.jpeg", "start": 89405565, "end": 99697193}, {"filename": "/Assets/sh_catWorkBoot_draco.glb", "start": 99697193, "end": 99752973}], "remote_package_size": 99766916});
 
   })();
 
-// end include: C:\Users\feli2\AppData\Local\Temp\tmpkagjdga1.js
-// include: C:\Users\feli2\AppData\Local\Temp\tmpdxlyko39.js
+// end include: C:\Users\feli2\AppData\Local\Temp\tmpq01p5007.js
+// include: C:\Users\feli2\AppData\Local\Temp\tmp7qty0dvb.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if (Module['$ww'] || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: C:\Users\feli2\AppData\Local\Temp\tmpdxlyko39.js
-// include: C:\Users\feli2\AppData\Local\Temp\tmpggt8a6sl.js
+  // end include: C:\Users\feli2\AppData\Local\Temp\tmp7qty0dvb.js
+// include: C:\Users\feli2\AppData\Local\Temp\tmpp0r4mdpk.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: C:\Users\feli2\AppData\Local\Temp\tmpggt8a6sl.js
+  // end include: C:\Users\feli2\AppData\Local\Temp\tmpp0r4mdpk.js
 
 
 var arguments_ = [];
@@ -11945,7 +11942,7 @@ var _emscripten_stack_get_free = () => (_emscripten_stack_get_free = wasmExports
 var __emscripten_stack_restore = (a0) => (__emscripten_stack_restore = wasmExports['_emscripten_stack_restore'])(a0);
 var __emscripten_stack_alloc = (a0) => (__emscripten_stack_alloc = wasmExports['_emscripten_stack_alloc'])(a0);
 var _emscripten_stack_get_current = () => (_emscripten_stack_get_current = wasmExports['emscripten_stack_get_current'])();
-var ___emscripten_embedded_file_data = Module['___emscripten_embedded_file_data'] = 135200;
+var ___emscripten_embedded_file_data = Module['___emscripten_embedded_file_data'] = 135204;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===
