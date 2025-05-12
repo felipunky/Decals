@@ -1069,3 +1069,9 @@ dkms.conf
 *.uf2
 # Raspberry Pi Pico disassembler file
 *.dis
+docs/draco/draco_features.h
+docs/submodules/draco/draco_decoder.js
+docs/submodules/draco/draco_encoder.js
+docs/submodules/draco/draco_encoder.js
+docs/submodules/draco/draco_decoder.js
+docs/draco/draco_features.h
