@@ -45,6 +45,7 @@ int WIDTH  = 800,
     HEIGHT = 600;
 int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
                 quarterHeight = halfHeight / 2;
+
 const float SPEED = 5.0f;
 // How much time between frames.
 float deltaTime = 0.0f, lastFrame = 0.0f;
@@ -53,7 +54,6 @@ SDL_Window* window;
 SDL_GLContext context;
 const char* glsl_version = "#version 300 es";
 static bool main_loop_running = true;
-static bool show_demo_window = true;
 
 int newVerticesSize;
 int flipAlbedo = 0;
@@ -95,7 +95,8 @@ glm::mat4 view          = glm::mat4(1.0f);
 glm::mat4 projection    = glm::mat4(1.0f);
 glm::mat4 modelNoGuizmo = glm::mat4(1.0f);
 glm::mat4 viewPinned    = glm::mat4(1.0f);
-glm::vec2 widthHeight;
+glm::vec2 widthHeight   = glm::vec2(WIDTH, HEIGHT);
+glm::vec2 currentWindowWidthAndHeight = widthHeight;
 bool isActiveFPS = false;
 
  /**
@@ -164,6 +165,7 @@ bool showBBox      = false;
 bool showProjector = false;
 bool showHitPoint  = false;
 bool normalMap     = false;
+bool splitScreen   = false;
 
 int scale = 1;
 float blend = 0.5f;
@@ -242,6 +244,16 @@ bool isGLTF = false;
 // We need this so that we don't need to add each module to the Emscripten build.
 extern "C"
 {
+    EMSCRIPTEN_KEEPALIVE
+    void passWindowSize(uint16_t* buf, int bufSize)
+    {
+        std::cout << "Buffer size: " << bufSize << " window's width: " << 
+                     +buf[0] << " window's height: " << +buf[1] << std::endl;
+        currentWindowWidthAndHeight = glm::vec2((float) buf[0], (float) buf[1]);                     
+        currentWindowWidthAndHeight.y = currentWindowWidthAndHeight.x * 0.75;
+        WIDTH = (int) buf[0];
+        HEIGHT = (int) currentWindowWidthAndHeight.y;
+    }
     EMSCRIPTEN_KEEPALIVE
     void passGLTF(char* buf)
     {
@@ -808,9 +820,9 @@ void renderCube()
     glBindVertexArray(0);
 }
 
-void EditTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition, ImGuiIO& io)
+void EditTransform(float* cameraView, float* cameraProjection, float* matrix, bool editTransformDecomposition, bool splitScreen, ImGuiIO& io)
 {
-    ImGuizmo::SetRect(0, 0, io.DisplaySize.x/2, io.DisplaySize.y);
+    ImGuizmo::SetRect(0, 0, (splitScreen ? io.DisplaySize.x / 2 : io.DisplaySize.x), io.DisplaySize.y);
     static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::LOCAL);
     static bool useSnap = false;
     static float snap[3] = { 1.f, 1.f, 1.f };
@@ -903,7 +915,7 @@ void EditTransform(float* cameraView, float* cameraProjection, float* matrix, bo
    }
    else
    {
-      ImGuizmo::SetRect(0, 0, io.DisplaySize.x/2, io.DisplaySize.y);
+      ImGuizmo::SetRect(0, 0, (splitScreen ? io.DisplaySize.x/2 : io.DisplaySize.x), io.DisplaySize.y);
    }
    ImGuizmo::Manipulate(cameraView, cameraProjection, mCurrentGizmoOperation, mCurrentGizmoMode, matrix, NULL, useSnap ? &snap[0] : NULL, boundSizing ? bounds : NULL, boundSizingSnap ? boundsSnap : NULL);
 }
@@ -1410,7 +1422,7 @@ bool init()
     window = SDL_CreateWindow("OpenGL with SDL2 & GLAD",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         WIDTH, HEIGHT,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
     if (!window) 
     {
         std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
@@ -1913,7 +1925,7 @@ void mouse_motion(SDL_Event& event)
     // Raytrace.
     if (isTracing)
     {
-        rayTrace(event.motion.x + WIDTH / 4, event.motion.y, widthHeight, modelDataVertices,
+        rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, modelDataVertices,
                  indexes, projection, view, model, false,
                  /* Out */hitNor, hitPos, decalProjector);
     }
@@ -1979,7 +1991,9 @@ void main_loop()
     // calculateNearFarPlane(bboxMax, centroid, /** Out **/ near, far);
     // differenceBboxMaxMin = bboxMax - bboxMin;
     projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
-    glm::mat4 projectionHalf = glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane);
+    glm::mat4 projectionHalf = (splitScreen ? 
+                                glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane) : 
+                                projection);
     glm::mat4 projectionSide //= glm::ortho(bboxMin.x, bboxMax.x, bboxMin.y, bboxMax.y, bboxMin.z, bboxMax.z);
         = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
     //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
@@ -2019,6 +2033,7 @@ void main_loop()
         
         // Only do input handling on the perspective viewport.
         bool isInPerspectiveViewport = (event.motion.x < halfWidth ? true : false);
+        isInPerspectiveViewport = splitScreen ? isInPerspectiveViewport : true;
 
         if (!isInPerspectiveViewport)
         {
@@ -2047,9 +2062,18 @@ void main_loop()
                 mouse_wheel(event.wheel);
                 break;
             }
-            case SDL_QUIT:
+            case SDL_KEYDOWN:
             {
-                main_loop_running = false;
+                key_down(event.key.keysym.sym);
+                break;
+            }
+            case SDL_WINDOWEVENT:
+            {
+                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+                {
+                    WIDTH = event.window.data1;
+                    HEIGHT = event.window.data2;
+                }
                 break;
             }
             case SDL_KEYUP:
@@ -2060,9 +2084,9 @@ void main_loop()
                 }
                 break;
             }
-            case SDL_KEYDOWN:
+            case SDL_QUIT:
             {
-                key_down(event.key.keysym.sym);
+                main_loop_running = false;
                 break;
             }
             default:
@@ -2106,6 +2130,10 @@ void main_loop()
         CAMERA = TRACK_BALL;
         //std::cout << "Trackball" << std::endl;
     }
+    if (ImGui::Button("Split Screen"))
+    {
+        splitScreen = !splitScreen;
+    }
     if (ImGui::Button("Enable Normal Map"))
     {
         normalMap = !normalMap;
@@ -2140,7 +2168,7 @@ void main_loop()
     for (int i = 0; i < 1; ++i)
     {
         ImGuizmo::SetID(i);
-        EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(model), lastUsing == i, io);
+        EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(model), lastUsing == i, splitScreen, io);
         if (ImGuizmo::IsUsing())
         {
             lastUsing = i;
@@ -2227,8 +2255,15 @@ void main_loop()
     /** Start Light Pass **/
     //glScissor(0, 0, WIDTH/2, HEIGHT);
     int enableNormals = normalMap ? 1 : 0;
-    glViewport(0, 0, WIDTH/2, HEIGHT);
-
+    if (splitScreen)
+    {
+        glViewport(0, 0, WIDTH/2, HEIGHT);
+    }
+    else
+    {
+        //std::cout << "Window width: " << WIDTH << " height: " << HEIGHT << " aspect: " << aspect << std::endl;
+        glViewport(0, 0, WIDTH, HEIGHT);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(VAO);
     deferredPass.use();
@@ -2301,80 +2336,83 @@ void main_loop()
         renderFrustum(decalProjector);
     }
     
-    // Side View.
-    glViewport(WIDTH/2, 0, WIDTH/2, HEIGHT/2);
+    if (splitScreen)
+    {
+        // Side View.
+        glViewport(WIDTH/2, 0, WIDTH/2, HEIGHT/2);
 
-    // Scale for the side view.
-    glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(zoomSide, zoomSide, zoomSide));
-    modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
+        // Scale for the side view.
+        glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(zoomSide, zoomSide, zoomSide));
+        modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(VAO);
-    deferredPass.use();
-    deferredPass.setMat4("model", modelSide);
-    deferredPass.setMat4("projection", projectionSide);
-    deferredPass.setMat4("view", viewPinned);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000, 
-                                            0.000000, 0.981959, 0.189095, 0.000000, 
-                                            -0.993572, 0.021407, -0.111162, 0.000000, 
-                                            -0.064962, 0.388481, -4.221102, 1.000000));*/
-    deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, material.normal);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, material.metallic);
-    // glActiveTexture(GL_TEXTURE3);
-    // glBindTexture(GL_TEXTURE_2D, material.ao);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(VAO);
+        deferredPass.use();
+        deferredPass.setMat4("model", modelSide);
+        deferredPass.setMat4("projection", projectionSide);
+        deferredPass.setMat4("view", viewPinned);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000, 
+                                                0.000000, 0.981959, 0.189095, 0.000000, 
+                                                -0.993572, 0.021407, -0.111162, 0.000000, 
+                                                -0.064962, 0.388481, -4.221102, 1.000000));*/
+        deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, material.normal);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+        // glActiveTexture(GL_TEXTURE2);
+        // glBindTexture(GL_TEXTURE_2D, material.metallic);
+        // glActiveTexture(GL_TEXTURE3);
+        // glBindTexture(GL_TEXTURE_2D, material.ao);
 
-    deferredPass.setVec3("viewPos", camPos);
-    deferredPass.setFloat("iTime", iTime);
-    deferredPass.setInt("iFlipper", flipper);
-    deferredPass.setInt("iNormals", 0);//enableNormals);
-    deferredPass.setFloat("iTime", iTime);
+        deferredPass.setVec3("viewPos", camPos);
+        deferredPass.setFloat("iTime", iTime);
+        deferredPass.setInt("iFlipper", flipper);
+        deferredPass.setInt("iNormals", 0);//enableNormals);
+        deferredPass.setFloat("iTime", iTime);
 
-    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(0);
 
-    // Front View.
-    glViewport(WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2);
+        // Front View.
+        glViewport(WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2);
 
-    // Scale for the side view.
-    glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(zoomTop, zoomTop, zoomTop));
-    //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
+        // Scale for the side view.
+        glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(zoomTop, zoomTop, zoomTop));
+        //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(VAO);
-    deferredPass.use();
-    deferredPass.setMat4("model", modelTop);
-    deferredPass.setMat4("projection", projectionSide);
-    deferredPass.setMat4("view", viewPinned);/*glm::mat4(1.0, 0.0,  0.0, 0.0, 
-                                            0.0, 1.0,  0.0, 0.0, 
-                                            0.0, 0.0,  1.0, 0.0, 
-                                            0.0, 0.0, -1.0, 1.0));*/
-    deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, material.normal);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, material.metallic);
-    // glActiveTexture(GL_TEXTURE3);
-    // glBindTexture(GL_TEXTURE_2D, material.ao);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(VAO);
+        deferredPass.use();
+        deferredPass.setMat4("model", modelTop);
+        deferredPass.setMat4("projection", projectionSide);
+        deferredPass.setMat4("view", viewPinned);/*glm::mat4(1.0, 0.0,  0.0, 0.0, 
+                                                0.0, 1.0,  0.0, 0.0, 
+                                                0.0, 0.0,  1.0, 0.0, 
+                                                0.0, 0.0, -1.0, 1.0));*/
+        deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, material.normal);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+        // glActiveTexture(GL_TEXTURE2);
+        // glBindTexture(GL_TEXTURE_2D, material.metallic);
+        // glActiveTexture(GL_TEXTURE3);
+        // glBindTexture(GL_TEXTURE_2D, material.ao);
 
-    deferredPass.setVec3("viewPos", camPos);
-    deferredPass.setFloat("iTime", iTime);
-    deferredPass.setInt("iFlipper", flipper);
-    deferredPass.setInt("iNormals", 0);//enableNormals);
-    deferredPass.setFloat("iTime", iTime);
+        deferredPass.setVec3("viewPos", camPos);
+        deferredPass.setFloat("iTime", iTime);
+        deferredPass.setInt("iFlipper", flipper);
+        deferredPass.setInt("iNormals", 0);//enableNormals);
+        deferredPass.setFloat("iTime", iTime);
 
-    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
-    
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(0);
+        glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(0);
+    }
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

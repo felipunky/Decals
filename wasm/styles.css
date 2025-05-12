@@ -1,11 +1,28 @@
+.buttonContainer {
+    text-align: justify;
+    -moz-text-align-last: justify;
+    text-align-last: justify;
+    border: 1px solid;
+    width: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
 .button {
     background-color: #1b1be3;
     border: none;
     color: white;
     text-align: center;
     text-decoration: none;
-    display: inline-block;
     margin: 4px 2px;
     cursor: pointer;
     border-radius: 12px;
+    height:30px;
+}
+
+#canvas {
+    width: 97vw;
+    height: 97vh;
+    display: block;
 }
