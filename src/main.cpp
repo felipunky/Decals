@@ -1444,7 +1444,7 @@ bool init()
 #endif
     
     // Create SDL window
-    window = SDL_CreateWindow("OpenGL with SDL2 & GLAD",
+    window = SDL_CreateWindow("Decal Editor",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         WIDTH, HEIGHT,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
@@ -1623,6 +1623,11 @@ frameBuffer createAndAttachTextureSpaceRbo()
     return textureSpaceFramebuffer;
 }
 
+bool fileExists(const std::string& file)
+{
+    return std::filesystem::exists(file);
+}
+
 int main()
 {
 #ifdef OPTIMIZE
@@ -1672,6 +1677,14 @@ int main()
     /**
      * Start Read GLTF
      */
+    if (fileExists(fileName))
+    {
+        std::cout << "File: " << fileName << " exists";
+    }
+    else
+    {
+        std::cout << "File: " << fileName << " does not exist";
+    }
     tinygltf::Model modelGLTF;
     if (!GLTF::loadModel(modelGLTF, fileName))
     {

@@ -211,23 +211,26 @@ if(DEFINED EMSCRIPTEN)
         nanort
     )
 
-    # Copy shaders folder.
-    add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${SHADERS_PATH}
-        ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders
-    )
-    # ASSETS
-    # Copy Assets folder on the build folder.
-    add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${ASSETS_PATH}
-        ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets
-    )
+    # # Copy shaders folder.
+    # add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+    #     COMMAND ${CMAKE_COMMAND} -E copy_directory
+    #     ${SHADERS_PATH}
+    #     ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders
+    # )
+    # # ASSETS
+    # # Copy Assets folder on the build folder.
+    # add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+    #     COMMAND ${CMAKE_COMMAND} -E copy_directory
+    #     ${ASSETS_PATH}
+    #     ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets
+    # )
 
-    set(SHADERS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders@/shaders)
-    set(ASSETS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets@/Assets)
+    # set(SHADERS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/shaders@/shaders)
+    # set(ASSETS_PATH_EMSCRIPTEN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Assets@/Assets)
     
+    set(SHADERS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/shaders@/shaders)
+    set(ASSETS_PATH_EMSCRIPTEN ${PROJECT_SOURCE_DIR}/Assets@/Assets)
+
     # Runtime modules.
     set(RUNTIME_MODULES         "-s EXPORTED_FUNCTIONS=\"['_main','_malloc','_free']\" ")
     list(APPEND RUNTIME_MODULES "-s EXPORTED_RUNTIME_METHODS=\"['ccall', 'stringToUTF8', 'HEAPU16', 'HEAPU8']\"")
@@ -280,6 +283,10 @@ if(DEFINED EMSCRIPTEN)
     )
     # Add styles.css to the wasm build folder.
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/styles.css
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    # Add libdraco.a to the wasm build folder.
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/wasm/libdraco.a
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
     )
 
