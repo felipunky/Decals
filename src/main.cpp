@@ -37,9 +37,6 @@
 #define NEAR_PLANE 1e-5
 #define RADIANS_30 glm::radians(30.0f)
 #define RADIANS_45 glm::radians(45.0f)
-#if 1
-    #define PILOT_SHIRT
-#endif
 
 int WIDTH  = 800,
     HEIGHT = 600;
@@ -90,9 +87,6 @@ float farPlane      = 200.0f;
 float focalDistance = 3.0f;
 float radius        = 1.0f;
 
-glm::vec3 bboxMin  = glm::vec3(1e+5);
-glm::vec3 bboxMax  = glm::vec3(-1e+5);
-glm::vec3 centroid = glm::vec3(-1e+5);
 glm::vec3 camPos = glm::vec3( 0.0f, 2.5f, 5.0f );
 glm::vec3 camFront = glm::vec3( 0.0f, 0.0f, -1.0f );
 glm::vec3 camUp = glm::vec3( 0.0f, 1.0f, 0.0f );
@@ -189,11 +183,21 @@ unsigned int frame   = 0,
 
 float iTime;
 
-nanort::BVHAccel<float> accel;
-glm::vec3 hitPos = glm::vec3(0.0, 0.0, 0.0);
-glm::vec3 hitNor = glm::vec3(1.0, 1.0, 1.0);
-bool isTracing = false;
-unsigned int VBOVertices, VBONormals, VBOTextureCoordinates, VBOTangents, VAO, EBO;
+enum MODEL
+{
+    WORKBOOT,
+    CLAY,
+    SHIRT
+};
+MODEL currentModel = SHIRT;
+
+std::string fileToString(const std::string& fileName)
+{
+    std::ifstream in(fileName);
+    std::string contents((std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>());
+    return contents;
+}
 
 std::vector<uint8_t> uploadImage()
 {
@@ -215,10 +219,21 @@ std::vector<uint8_t> loadArray(uint8_t* buf, int bufSize)
     return result;
 }
 
-void reloadModel();
-void ObjLoader(std::string inputFile);
-void loadGLTF(tinygltf::Model &model);
-void recomputeCamera();
+struct BBox
+{
+    glm::vec3 bboxMin = glm::vec3(1e+5f);
+    glm::vec3 bboxMax = glm::vec3(-1e+5f);
+    glm::vec3 centroid = glm::vec3(0.0f);
+};
+
+struct BVO
+{
+    nanort::BVHAccel<float> accel;
+    glm::vec3 hitPos = glm::vec3(0.0, 0.0, 0.0);
+    glm::vec3 hitNor = glm::vec3(1.0, 1.0, 1.0);
+    glm::mat4 decalProjector = glm::mat4(1.0f);
+    bool isTracing = false;
+};
 
 struct Material
 {
@@ -230,6 +245,36 @@ struct Material
     unsigned int decalBaseColor;
 };
 
+struct OpenGLObject
+{
+    unsigned int VBOVertices,
+        VBONormals,
+        VBOTextureCoordinates,
+        VBOTangents,
+        VAO,
+        EBO;
+};
+
+struct ModelData
+{
+    std::vector<glm::vec3> vertices;
+    std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> textureCoordinates;
+    std::vector<glm::vec4> tangents;
+    std::vector<unsigned int> indexes;
+    BBox Bbox;
+    BVO bvo;
+    Material material;
+    OpenGLObject openGLObject;
+};
+
+ModelData modelData;
+
+void reloadModel();
+void ObjLoader(std::string inputFile, ModelData& modelData);
+void loadGLTF(tinygltf::Model& model, ModelData& modelData);
+void recomputeCamera();
+
 struct frameBuffer
 {
     unsigned int framebuffer;
@@ -238,15 +283,6 @@ struct frameBuffer
 
 frameBuffer depthFramebuffer;
 frameBuffer textureSpaceFramebuffer;
-
-void clearBBox(glm::vec3& bboxMin, glm::vec3& bboxMax, glm::vec3& centroid)
-{
-    bboxMin  = glm::vec3(1e+5);
-    bboxMax  = glm::vec3(-1e+5);
-    centroid = glm::vec3(-1e+5);
-}
-
-Material material;
 
 bool isGLTF = false;
 
@@ -283,7 +319,7 @@ extern "C"
             std::cout << "Warning: " << warn << std::endl;
             #endif
         }
-        loadGLTF(model);
+        loadGLTF(model, modelData);
         reloadModel();
         //recomputeCamera();
         isGLTF = true;
@@ -307,7 +343,7 @@ extern "C"
             std::cout << "Warning: " << warn << std::endl;
             #endif
         }
-        loadGLTF(model);
+        loadGLTF(model, modelData);
         reloadModel();
         //recomputeCamera();
         isGLTF = true;
@@ -318,9 +354,9 @@ extern "C"
     {
         //std::cout << "New mesh content: " << buf << std::endl;
         //clearBBox(bboxMin, bboxMax, centroid);
-        std::cout << "BBox Cleared Center: {x: " << centroid.x << ", y: " << centroid.y << ", z:" << centroid.z << "}\n";
+        std::cout << "BBox Cleared Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
         std::string result = buf;
-        ObjLoader(result);
+        ObjLoader(result, modelData);
         reloadModel();
         //recomputeCamera();
         isGLTF = false;
@@ -361,7 +397,7 @@ extern "C"
         std::cout << "Reading albedo from file!" << std::endl;
         std::cout << "Albedo buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
+        geometryPass.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeAlbedo(uint16_t* buf, int bufSize)
@@ -383,7 +419,7 @@ extern "C"
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
 #endif
         glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
-        glDeleteTextures(1, &(material.baseColor));
+        glDeleteTextures(1, &(modelData.material.baseColor));
 
         glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
@@ -409,7 +445,7 @@ extern "C"
         std::cout << "Reading normal from file!" << std::endl;
         std::cout << "Normal buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(material.normal), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
+        geometryPass.createTextureFromFile(&(modelData.material.normal), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeNormal(uint16_t* buf, int bufSize)
@@ -428,7 +464,7 @@ extern "C"
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
 #endif
         glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
-        glDeleteTextures(1, &(material.normal));
+        glDeleteTextures(1, &(modelData.material.normal));
 
         glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
@@ -501,20 +537,11 @@ static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
 
 void main_loop();
 
-std::vector<glm::vec3> modelDataVertices;
-std::vector<glm::vec3> modelDataNormals;
-std::vector<glm::vec2> modelDataTextureCoordinates;
-std::vector<glm::vec4> modelDataTangents;
-std::vector<tinyobj::material_t> modelDataMaterial;
-std::map<std::string, GLuint> modelDataTextures;
-std::vector<unsigned int> indexes;
-
 // Projector
 glm::vec3 projectorPos;
 glm::vec3 projectorDir;
 // glm::mat4 projectorView;
 // glm::mat4 projectorProjection;
-glm::mat4 decalProjector    = glm::mat4(1.0f);
 float     projectorSize     = 0.5f;
 float     projectorRotation = 0.0f;
 
@@ -547,10 +574,8 @@ std::array<glm::vec3, 8> cubeCorners(const glm::vec3& min, const glm::vec3& max)
 }
 
 void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight, 
-              const std::vector<glm::vec3>& modelDataVertices, const std::vector<unsigned int>& indexes, 
-              const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model, const bool& debug,
-              /** Out **/
-              glm::vec3& hitNor, glm::vec3& hitPos, glm::mat4& decalProjector)
+              /* In and Out */ ModelData& modelData,
+              const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model, const bool& debug)
 {
     if (debug)
     {
@@ -591,19 +616,19 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
     ray.min_t = 0.0f;
     ray.max_t = kFar;
 
-    nanort::TriangleIntersector<> triangle_intersector(glm::value_ptr(modelDataVertices[0]), &indexes[0], sizeof(float) * 3);
+    nanort::TriangleIntersector<> triangle_intersector(glm::value_ptr(modelData.vertices[0]), &(modelData.indexes[0]), sizeof(float) * 3);
     nanort::TriangleIntersection<> isect;
-    bool hit = accel.Traverse(ray, triangle_intersector, &isect);
+    bool hit = modelData.bvo.accel.Traverse(ray, triangle_intersector, &isect);
     if (hit)
     {
-        hitPos = rayOri + rayDir * isect.t;
+        modelData.bvo.hitPos = rayOri + rayDir * isect.t;
         
         unsigned int fid = isect.prim_id;
-        unsigned int id  = indexes[3 * fid];
-        hitNor = modelDataNormals[id];
+        unsigned int id  = modelData.indexes[3 * fid];
+        modelData.bvo.hitNor = modelData.normals[id];
 
-        projectorPos = hitPos + hitNor * PROJECTOR_DISTANCE;
-        projectorDir = -hitNor;
+        projectorPos = modelData.bvo.hitPos + modelData.bvo.hitNor * PROJECTOR_DISTANCE;
+        projectorDir = -modelData.bvo.hitNor;
 
         float ratio = float(heightDecal) / float(widthDecal);
         float proportionateHeight = projectorSize * ratio;
@@ -612,15 +637,15 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
         rotate = glm::rotate(rotate, glm::radians(projectorRotation), projectorDir);
 
         glm::vec4 axis                = rotate * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
-        glm::mat4 projectorView       = glm::lookAt(projectorPos, hitPos, axis.xyz());
+        glm::mat4 projectorView       = glm::lookAt(projectorPos, modelData.bvo.hitPos, axis.xyz());
         glm::mat4 projectorProjection = glm::ortho(-projectorSize, projectorSize, -proportionateHeight, proportionateHeight, 0.001f, FAR_PLANE);
 
-        decalProjector = projectorProjection * projectorView;
+        modelData.bvo.decalProjector = projectorProjection * projectorView;
         if (debug)
         {
-            printf("Hit Point: %s\n", glm::to_string(hitPos).c_str());
-            printf("Hit Normal: %s\n", glm::to_string(hitNor).c_str());
-            printf("Decal Projector: %s\n", glm::to_string(decalProjector).c_str());
+            printf("Hit Point: %s\n", glm::to_string(modelData.bvo.hitPos).c_str());
+            printf("Hit Normal: %s\n", glm::to_string(modelData.bvo.hitNor).c_str());
+            printf("Decal Projector: %s\n", glm::to_string(modelData.bvo.decalProjector).c_str());
         }
     }
 }
@@ -630,8 +655,8 @@ glm::vec3 calculateNearFarPlane()
 {
     // https://community.khronos.org/t/automatically-center-3d-object/20892/6
     //glm::vec3 nearFarPlaneBSphere = bboxMax - centroid;
-    glm::vec3 nearFarPlaneBSphere = glm::vec3(centroid.x, centroid.y, bboxMin.z) - 
-                                    glm::vec3(centroid.x, centroid.y, bboxMax.z);
+    glm::vec3 nearFarPlaneBSphere = glm::vec3(modelData.Bbox.centroid.x, modelData.Bbox.centroid.y, modelData.Bbox.bboxMin.z) -
+                                    glm::vec3(modelData.Bbox.centroid.x, modelData.Bbox.centroid.y, modelData.Bbox.bboxMax.z);
     float r = glm::length(nearFarPlaneBSphere);
     //float r = glm::dot(nearFarPlaneBSphere, nearFarPlaneBSphere);
 
@@ -956,14 +981,14 @@ std::bitset<256> VertexBitHash(glm::vec3* v, glm::vec3* n, glm::vec2* u) {
 
 void ComputeTangents() 
 {
-    modelDataTangents.clear();
-    modelDataTangents.resize(indexes.size(), glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
-    for(unsigned int i = 0; i < indexes.size(); i += 3)
+    modelData.tangents.clear();
+    modelData.tangents.resize(modelData.indexes.size(), glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    for(unsigned int i = 0; i < modelData.indexes.size(); i += 3)
     {
 
-        glm::vec3 vertex0 = modelDataVertices[indexes[i]];
-        glm::vec3 vertex1 = modelDataVertices[indexes[i + 1]];
-        glm::vec3 vertex2 = modelDataVertices[indexes[i + 2]];
+        glm::vec3 vertex0 = modelData.vertices[modelData.indexes[i]];
+        glm::vec3 vertex1 = modelData.vertices[modelData.indexes[i + 1]];
+        glm::vec3 vertex2 = modelData.vertices[modelData.indexes[i + 2]];
 
 
         glm::vec3 deltaPos;
@@ -975,9 +1000,9 @@ void ComputeTangents()
         {
             deltaPos = vertex1 - vertex0;
         }
-        glm::vec2 uv0 = modelDataTextureCoordinates[indexes[i]];
-        glm::vec2 uv1 = modelDataTextureCoordinates[indexes[i + 1]];
-        glm::vec2 uv2 = modelDataTextureCoordinates[indexes[i + 2]];
+        glm::vec2 uv0 = modelData.textureCoordinates[modelData.indexes[i]];
+        glm::vec2 uv1 = modelData.textureCoordinates[modelData.indexes[i + 1]];
+        glm::vec2 uv2 = modelData.textureCoordinates[modelData.indexes[i + 2]];
 
         glm::vec2 deltaUV1 = uv1 - uv0;
         glm::vec2 deltaUV2 = uv2 - uv0;
@@ -993,7 +1018,7 @@ void ComputeTangents()
         {
             tan = deltaPos / 1.0f;
         }
-        glm::vec3 normal = modelDataNormals[indexes[i]];
+        glm::vec3 normal = modelData.normals[modelData.indexes[i]];
         
         glm::vec3 vectorOne = vertex1 - vertex0;
         glm::vec3 vectorTwo = vertex2 - vertex0;
@@ -1007,24 +1032,26 @@ void ComputeTangents()
         glm::vec4 tangent = glm::vec4(tan, (glm::dot(glm::cross(normal, tan), tan2) < 0.0f ? -1.0f : 1.0f));
 
         // write into array - for each vertex of the face the same value
-        modelDataTangents[indexes[i]]     = tangent;
-        modelDataTangents[indexes[i + 1]] = tangent;
-        modelDataTangents[indexes[i + 2]] = tangent;
+        modelData.tangents[modelData.indexes[i]]     = tangent;
+        modelData.tangents[modelData.indexes[i + 1]] = tangent;
+        modelData.tangents[modelData.indexes[i + 2]] = tangent;
     }
 }
 
-void ObjLoader(std::string inputFile)
+void ClearModelVertexData(ModelData& modelData)
 {
-    bboxMin = glm::vec3(1e+5);
-    bboxMax = glm::vec3(-1e+5);   
-    modelDataVertices.clear();
-    modelDataNormals.clear();
-    modelDataTextureCoordinates.clear();
-    modelDataTangents.clear();
-    indexes.clear();
-    //delete[] mesh.Vertices;
-    //delete[] mesh.Normals;
-    //delete[] mesh.Faces;
+    modelData.vertices.clear();
+    modelData.normals.clear();
+    modelData.textureCoordinates.clear();
+    modelData.tangents.clear();
+    modelData.indexes.clear();
+    modelData.Bbox.bboxMin = glm::vec3(1e+5);
+    modelData.Bbox.bboxMax = glm::vec3(-1e+5);
+}
+
+void ObjLoader(std::string inputFile, ModelData& modelData)
+{
+    ClearModelVertexData(modelData);
 
     std::istringstream stream = std::istringstream(inputFile);
     //std::cout << stream.str() << std::endl;
@@ -1073,37 +1100,37 @@ void ObjLoader(std::string inputFile)
             auto hash = VertexBitHash(&position, &normal, &textureCoordinates);
             if (uniqueVertices.count(hash) == 0)
             {
-                modelDataVertices.push_back(position);
-                modelDataNormals.push_back(normal);
-                modelDataTextureCoordinates.push_back(textureCoordinates);
+                modelData.vertices.push_back(position);
+                modelData.normals.push_back(normal);
+                modelData.textureCoordinates.push_back(textureCoordinates);
                 // BBox
-                bboxMax = glm::max(bboxMax, position);
-                bboxMin = glm::min(bboxMin, position);
-                indexes.push_back(counter);
+                modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, position);
+                modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, position);
+                modelData.indexes.push_back(counter);
                 uniqueVertices[hash] = counter;
                 ++counter;
             }
             else
             {
-                indexes.push_back(uniqueVertices[hash]);
+                modelData.indexes.push_back(uniqueVertices[hash]);
             }
         }
     }
-    centroid = (bboxMin + bboxMax) * 0.5f;
+    modelData.Bbox.centroid = (modelData.Bbox.bboxMin + modelData.Bbox.bboxMax) * 0.5f;
     ComputeTangents();
 
-    std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
+    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
+    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
 
 #ifdef OPTIMIZE
 #else
-    std::cout << "Vertices: " << modelDataVertices.size() << "\n";
-    std::cout << "Normals: " << modelDataNormals.size() << "\n";
-    std::cout << "Tangents: " << modelDataTangents.size() << "\n";
-    std::cout << "Texture Coordinates: " << modelDataTextureCoordinates.size() << "\n";
+    std::cout << "Vertices: " << modelData.vertices.size() << "\n";
+    std::cout << "Normals: " << modelData.normals.size() << "\n";
+    std::cout << "Tangents: " << modelData.tangents.size() << "\n";
+    std::cout << "Texture Coordinates: " << modelData.textureCoordinates.size() << "\n";
     std::cout << "Materials: " << materials.size() << "\n";
-    std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
+    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
+    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
 #endif
 }
 
@@ -1119,15 +1146,11 @@ const float* GetDataFromAccessorGLTF(const tinygltf::Model &model, const tinyglt
     return result;
 }
 
-void loadGLTF(tinygltf::Model &model) 
+void loadGLTF(tinygltf::Model &model, ModelData& modelData) 
 {
-    bboxMin = glm::vec3(1e+5);
-    bboxMax = glm::vec3(-1e+5);   
-    modelDataVertices.clear();
-    modelDataNormals.clear();
-    modelDataTextureCoordinates.clear();
-    modelDataTangents.clear();
-    indexes.clear();
+    modelData.Bbox.bboxMin = glm::vec3(1e+5);
+    modelData.Bbox.bboxMax = glm::vec3(-1e+5);
+    ClearModelVertexData(modelData);
 
     std::unordered_map<std::bitset<256>, uint32_t> uniqueVertices;
     uint32_t counter = 0;
@@ -1146,10 +1169,10 @@ void loadGLTF(tinygltf::Model &model)
         for (const auto& prim : mesh.primitives)
         {
 
-            bool result = GLTF::GetAttributes<glm::vec3>(model, prim, modelDataVertices, "POSITION");
-                 result = GLTF::GetAttributes<glm::vec3>(model, prim, modelDataNormals, "NORMAL");
-                 result = GLTF::GetAttributes<glm::vec2>(model, prim, modelDataTextureCoordinates, "TEXCOORD_0");
-                 result = GLTF::GetAttributes<glm::vec4>(model, prim, modelDataTangents, "TANGENT");
+            bool result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData.vertices,           "POSITION");
+                 result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData.normals,            "NORMAL");
+                 result = GLTF::GetAttributes<glm::vec2>(model, prim, modelData.textureCoordinates, "TEXCOORD_0");
+                 result = GLTF::GetAttributes<glm::vec4>(model, prim, modelData.tangents,           "TANGENT");
 
             if (prim.indices > -1)
             {
@@ -1162,17 +1185,17 @@ void loadGLTF(tinygltf::Model &model)
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT:
                     _u32Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u32Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned int));
-                    indexes.insert(indexes.end(), std::make_move_iterator(_u32Buffer.begin()), std::make_move_iterator(_u32Buffer.end()));
+                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u32Buffer.begin()), std::make_move_iterator(_u32Buffer.end()));
                     break;
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT:
                     _u16Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u16Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned short));
-                    indexes.insert(indexes.end(), std::make_move_iterator(_u16Buffer.begin()), std::make_move_iterator(_u16Buffer.end()));
+                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u16Buffer.begin()), std::make_move_iterator(_u16Buffer.end()));
                     break;
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE:
                     _u8Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u8Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned char));
-                    indexes.insert(indexes.end(), std::make_move_iterator(_u8Buffer.begin()), std::make_move_iterator(_u8Buffer.end()));
+                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u8Buffer.begin()), std::make_move_iterator(_u8Buffer.end()));
                     break;
                 default:
                     std::cerr << "Unknown index component type : " << indexAccessor.componentType << " is not supported" << std::endl;
@@ -1184,36 +1207,36 @@ void loadGLTF(tinygltf::Model &model)
                 //! Primitive without indices, creating them
                 const auto& accessor = model.accessors[prim.attributes.find("POSITION")->second];
                 for (unsigned int i = 0; i < accessor.count; ++i)
-                    indexes.push_back(i);
+                    modelData.indexes.push_back(i);
             }
 
         }
     }
 
-    if (modelDataTangents.size() == 0)
+    if (modelData.tangents.size() == 0)
     {
         ComputeTangents();
     }
 
 #ifdef OPTIMIZE
 #else
-    std::cout << "Vertices: " << modelDataVertices.size() << "\n";
-    std::cout << "Normals: " << modelDataNormals.size() << "\n";
-    std::cout << "Texture Coordinates: " << modelDataTextureCoordinates.size() << "\n";
-    std::cout << "Tangents: " << modelDataTangents.size() << "\n";
+    std::cout << "Vertices: " << modelData.vertices.size() << "\n";
+    std::cout << "Normals: " << modelData.normals.size() << "\n";
+    std::cout << "Texture Coordinates: " << modelData.textureCoordinates.size() << "\n";
+    std::cout << "Tangents: " << modelData.tangents.size() << "\n";
     //std::cout << "Materials: " << materials.size() << "\n";
-    std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
+    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
+    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
 #endif
-    for (int i = 0; i < modelDataVertices.size(); ++i)
+    for (int i = 0; i < modelData.vertices.size(); ++i)
     {
-        glm::vec3 vertex = modelDataVertices[i];
-        bboxMin = glm::min(vertex, bboxMin);
-        bboxMax = glm::max(vertex, bboxMax);
+        glm::vec3 vertex = modelData.vertices[i];
+        modelData.Bbox.bboxMin = glm::min(vertex, modelData.Bbox.bboxMin);
+        modelData.Bbox.bboxMax = glm::max(vertex, modelData.Bbox.bboxMax);
     }
-    centroid = (bboxMin + bboxMax) * 0.5f;
-    std::cout << "BboxMax: {x: " << bboxMax.x << ", y: " << bboxMax.y << ", z: " << bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << bboxMin.x << ", y: " << bboxMin.y << ", z: " << bboxMin.z << "}\n";
+    modelData.Bbox.centroid = (modelData.Bbox.bboxMin + modelData.Bbox.bboxMax) * 0.5f;
+    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
+    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
 
     _u8Buffer.clear();
     _u16Buffer.clear();
@@ -1222,57 +1245,57 @@ void loadGLTF(tinygltf::Model &model)
     flipAlbedo = 1;
 }
 
-void CreateBOs()
+void CreateBOs(ModelData& modelData)
 {
     // Create a Vertex Buffer Object and copy the vertex data to it
     //unsigned int VBOVertices, VBONormals, VBOTextureCoordinates, VAO, EBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBOVertices);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOVertices);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelDataVertices.size(), modelDataVertices.data(), GL_STATIC_DRAW);
+    glGenVertexArrays(1, &modelData.openGLObject.VAO);
+    glGenBuffers(1, &modelData.openGLObject.VBOVertices);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOVertices);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelData.vertices.size(), modelData.vertices.data(), GL_STATIC_DRAW);
     //modelDataVertices.clear();
 
-	glGenBuffers(1, &VBONormals);
-	glBindBuffer(GL_ARRAY_BUFFER, VBONormals);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelDataNormals.size(), modelDataNormals.data(), GL_STATIC_DRAW);
+	glGenBuffers(1, &modelData.openGLObject.VBONormals);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBONormals);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelData.normals.size(), modelData.normals.data(), GL_STATIC_DRAW);
     //modelDataNormals.clear();
 
-	glGenBuffers(1, &VBOTextureCoordinates);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOTextureCoordinates);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * modelDataTextureCoordinates.size(), modelDataTextureCoordinates.data(), GL_STATIC_DRAW);
+	glGenBuffers(1, &modelData.openGLObject.VBOTextureCoordinates);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTextureCoordinates);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * modelData.textureCoordinates.size(), modelData.textureCoordinates.data(), GL_STATIC_DRAW);
     //modelDataTextureCoordinates.clear();
 
-    glGenBuffers(1, &VBOTangents);
-    glBindBuffer(GL_ARRAY_BUFFER, VBOTangents);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * modelDataTangents.size(), modelDataTangents.data(), GL_STATIC_DRAW);
+    glGenBuffers(1, &modelData.openGLObject.VBOTangents);
+    glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTangents);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * modelData.tangents.size(), modelData.tangents.data(), GL_STATIC_DRAW);
 
-    glGenBuffers(1, &EBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * indexes.size(), indexes.data(), GL_STATIC_DRAW);
+    glGenBuffers(1, &modelData.openGLObject.EBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelData.openGLObject.EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * modelData.indexes.size(), modelData.indexes.data(), GL_STATIC_DRAW);
     //indexes.clear();
     // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
-    glBindVertexArray(VAO);
+    glBindVertexArray(modelData.openGLObject.VAO);
 
     //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOVertices);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOVertices);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelData.openGLObject.EBO);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
 	glEnableVertexAttribArray(1);
-	glBindBuffer(GL_ARRAY_BUFFER, VBONormals);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBONormals);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 	
 	glEnableVertexAttribArray(2);
-	glBindBuffer(GL_ARRAY_BUFFER, VBOTextureCoordinates);
+	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTextureCoordinates);
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
     glEnableVertexAttribArray(3);
-    glBindBuffer(GL_ARRAY_BUFFER, VBOTangents);
+    glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTangents);
     glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
 }
 
-void BuildBVH()
+void BuildBVH(ModelData& modelData)
 {
     nanort::BVHBuildOptions<float> build_options;  // Use default option
     build_options.cache_bbox = false;
@@ -1285,16 +1308,16 @@ void BuildBVH()
 #endif
     //std::cout << "Vertices size: " << (sizeof(vertices) / sizeof(vertices[0])) << std::endl;
 
-    nanort::TriangleMesh<float> triangle_mesh(glm::value_ptr(modelDataVertices[0]), &indexes[0], sizeof(float) * 3);
-    nanort::TriangleSAHPred<float> triangle_pred(glm::value_ptr(modelDataVertices[0]), &indexes[0], sizeof(float) * 3);
+    nanort::TriangleMesh<float> triangle_mesh(glm::value_ptr(modelData.vertices[0]), &(modelData.indexes[0]), sizeof(float) * 3);
+    nanort::TriangleSAHPred<float> triangle_pred(glm::value_ptr(modelData.vertices[0]), &(modelData.indexes[0]), sizeof(float) * 3);
 
     //printf("num_triangles = %zu\n", modelDataVertices.size() / 3);
     //printf("faces = %p\n", indexes.size());
 
-    accel = nanort::BVHAccel<float>();
+    modelData.bvo.accel = nanort::BVHAccel<float>();
 
     nanort::BVHAccel<float> accelDummy;
-    bool ret = accelDummy.Build(indexes.size() / 3, triangle_mesh, triangle_pred, build_options);
+    bool ret = accelDummy.Build(modelData.indexes.size() / 3, triangle_mesh, triangle_pred, build_options);
     assert(ret);
 
     nanort::BVHBuildStatistics stats = accelDummy.GetStatistics();
@@ -1315,7 +1338,7 @@ void BuildBVH()
     printf("  Bmin               : %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
     printf("  Bmax               : %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
 #endif
-    accel = accelDummy;
+    modelData.bvo.accel = accelDummy;
 }
 
 void recomputeCamera()
@@ -1329,10 +1352,10 @@ void recomputeCamera()
     //camFront = glm::normalize(diff);//centroid - glm::vec3(0.0f, 0.0f, 1.0f));//camPos);
     
     //glm::vec3 bboxMinCentroid = glm::vec3(bboxMin.x, bboxMin.y, centroid.z);
-    glm::vec3 centroidBboxMin = glm::vec3(centroid.x, centroid.y, bboxMin.z);
+    glm::vec3 centroidBboxMin = glm::vec3(modelData.Bbox.centroid.x, modelData.Bbox.centroid.y, modelData.Bbox.bboxMin.z);
     // TOA = Adjacent = Opposite / Tan(30)
     // Opposite.
-    float bboxMinCentroidMinusCentroidBboxMin = centroid.z - bboxMin.z;
+    float bboxMinCentroidMinusCentroidBboxMin = modelData.Bbox.centroid.z - modelData.Bbox.bboxMin.z;
     float adjacentEqualsOppositeOverTanThirty = bboxMinCentroidMinusCentroidBboxMin / tan(glm::radians(15.0f));
     adjacentEqualsOppositeOverTanThirty *= adjacentEqualsOppositeOverTanThirty;
     /*float c = bboxMinCentroidMinusCentroidBboxMin / sin(glm::radians(15.0f));
@@ -1357,7 +1380,7 @@ void recomputeCamera()
     std::cout << "camPos: " << glm::to_string(camPos) << "\n";
     std::cout << "camFront: " << glm::to_string(camFront) << "\n";
     std::cout << "Radius: " << radius << "\n";
-    std::cout << "Centroid: " << glm::to_string(centroid) << "\n";
+    std::cout << "Centroid: " << glm::to_string(modelData.Bbox.centroid) << "\n";
     std::cout << "Focal Distance: " << focalDistance << "\n";
     std::cout << "Near: " << nearPlane << "\n";
     std::cout << "Far: " << farPlane << "\n";
@@ -1366,10 +1389,10 @@ void recomputeCamera()
 
 void reloadModel()
 {
-    BuildBVH();
-    CreateBOs();
+    BuildBVH(modelData);
+    CreateBOs(modelData);
     model = glm::mat4(1.0f);
-    std::cout << "Recomputed BBox Center: {x: " << centroid.x << ", y: " << centroid.y << ", z:" << centroid.z << "}\n";
+    std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
 }
 
 void recomputeDecalBaseColorTexture()
@@ -1381,8 +1404,8 @@ void recomputeDecalBaseColorTexture()
     std::cout << "Changing texture" << std::endl;
 #endif
     flip = 1;
-    glGenTextures(1, &(material.decalBaseColor));
-    glBindTexture(GL_TEXTURE_2D, material.decalBaseColor);
+    glGenTextures(1, &(modelData.material.decalBaseColor));
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
 
     // In an ideal world this should be exposed as input params to the function.
     // Texture wrapping params.
@@ -1628,6 +1651,29 @@ bool fileExists(const std::string& file)
     return std::filesystem::exists(file);
 }
 
+struct ModelFileNames
+{
+    std::string mesh,
+                baseColor,
+                normal,
+                roughness,
+                metallic,
+                ao,
+                decalBaseColor;
+};
+
+// https://stackoverflow.com/questions/5607589/right-way-to-split-an-stdstring-into-a-vectorstring
+std::vector<std::string> split(std::string text, char delim) 
+{
+    std::string line;
+    std::vector<std::string> vec;
+    std::stringstream ss(text);
+    while (std::getline(ss, line, delim)) {
+        vec.push_back(line);
+    }
+    return vec;
+}
+
 int main()
 {
 #ifdef OPTIMIZE
@@ -1662,82 +1708,93 @@ int main()
     
     //ObjLoader("Assets/t-shirt-lp/source/Shirt.obj");
 
-#ifdef PILOT_SHIRT
+    const int pick = 2;
+
+    std::vector<ModelFileNames> fileNames(3);
 #ifdef __EMSCRIPTEN__
-    std::string fileName //= "Assets/sh_catWorkBoot.glb";
-                         //= "Assets/Pilot/shirt_1_lowPoly.gltf";
-                         = "Assets/PilotShirtDraco.glb";
+    fileNames[0].mesh = "Assets/Pilot/source/PilotShirtDraco.glb";
+    fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
+    fileNames[2].mesh = "Assets/Clay/source/low_uv1sm.obj";
 #else
-    std::string fileName = "../Assets/PilotShirtDraco.glb";// "../Assets/Pilot/shirt_1_lowPoly.gltf";
+    fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
+    fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
+    fileNames[0].normal = "../Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
+    
+    fileNames[1].mesh = "../Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
+    fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpeg";
+    fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpeg";
+    
+    fileNames[2].mesh= "../Assets/Clay/source/low_uv1sm.obj";
+    fileNames[2].baseColor = "../Assets/Clay/textures/map_baseTexBaked.jpg";
+    fileNames[2].normal = "../Assets/Clay/textures/map_normals.jpg";
 #endif
-    //std::string fileName = "Assets/utahTeapot.gltf";
+    std::vector<ModelData> modelsData(3);
+    /**
+     * Start Read Models
+     */
+    //for (uint8_t i = 0u; i < fileNames.size(); ++i)
+    {
+        int i = pick;
+        if (fileExists(fileNames[i].mesh))
+        {
+            std::cout << "File: " << fileNames[i].mesh << " exists" << std::endl;
+        }
+        else
+        {
+            std::cout << "File: " << fileNames[i].mesh << " does not exist" << std::endl;
+        }
+
+        std::vector<std::string> splittedMeshName = split(fileNames[i].mesh, '.');
+        std::cout << "splittedMeshName size: " << splittedMeshName.size() << std::endl;
+        std::string fileType = splittedMeshName[splittedMeshName.size() - 1];
+        std::cout << "File type: " << fileType << std::endl;
+        if (fileType == "glb" || fileType == "gltf")
+        {
+            tinygltf::Model modelGLTF;
+            if (!GLTF::loadModel(modelGLTF, fileNames[i].mesh))
+            {
+#ifdef EXCEPTIONS
+                throw std::runtime_error("load GLTF Error!");
 #else
-    std::string fileName = "Assets/t-shirt-lp/source/Shirt.gltf";
+                std::cout << "Load GLTF Error!" << std::endl;
 #endif
-    /**
-     * Start Read GLTF
-     */
-    if (fileExists(fileName))
-    {
-        std::cout << "File: " << fileName << " exists";
-    }
-    else
-    {
-        std::cout << "File: " << fileName << " does not exist";
-    }
-    tinygltf::Model modelGLTF;
-    if (!GLTF::loadModel(modelGLTF, fileName))
-    {
-        #ifdef EXCEPTIONS
-        throw std::runtime_error("load GLTF Error!");
-        #else
-        std::cout << "Load GLTF Error!" << std::endl;
-        #endif
-    }
+            }
+            loadGLTF(modelGLTF, modelsData[i]);
+        }
+        else if (fileType == "obj")
+        {
+            std::string fileString = fileToString(fileNames[i].mesh);
+            ObjLoader(fileString, modelsData[i]);
+        }
+        /**
+         * End Read Models
+         */
 
-    loadGLTF(modelGLTF);
-    /**
-     * End Read GLFT
-     */
+            // Build the acceleration structure for ray tracing.
+        BuildBVH(modelsData[i]);
 
-    // Build the acceleration structure for ray tracing.
-    BuildBVH();
-
-    //centroid = (bboxMin + bboxMax) * 0.5f;
-    std::cout << "2nd BBox Center: {x: " << centroid.x << ", y: " << centroid.y << ", z:" << centroid.z << "}\n";
-	//camPos = centroid + glm::vec3(0.0f, 0.0f, 5.0f);//glm::vec3( 0.0f, -0.7f, 5.0f ); 
+        //centroid = (bboxMin + bboxMax) * 0.5f;
+        std::cout << "2nd BBox Center: {x: " << modelsData[i].Bbox.centroid.x << ", y: " << modelsData[i].Bbox.centroid.y << ", z:" << modelsData[i].Bbox.centroid.z << "}\n";
+        //camPos = centroid + glm::vec3(0.0f, 0.0f, 5.0f);//glm::vec3( 0.0f, -0.7f, 5.0f ); 
+    }
+    ClearModelVertexData(modelData);
+    modelData = modelsData[pick];
 
     geometryPass.use();
 
-#ifdef PILOT_SHIRT
 #ifdef __EMSCRIPTEN__
-    geometryPass.createTexture(&(material.normal), "Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg", "Normal", 1);
-    // geometryPass.createTexture(&(material.roughness), "Assets/t-shirt-lp/textures/T_shirt_roughness.jpg", "Roughness", 2);
-    // geometryPass.createTexture(&(material.metallic), "Assets/Textures/rustediron1-alt2-Unreal-Engine/rustediron2_metallic.png", "Metallic", 3);
-    // geometryPass.createTexture(&(material.ao), "Assets/t-shirt-lp/textures/T_shirt_AO.jpg", "AmbientOcclussion", 4);
-    geometryPass.createTexture(&(material.baseColor), "Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg", "BaseColor", 0);
+    geometryPass.createTexture(&(modelData.material.normal), "Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg", "Normal", 1);
+    geometryPass.createTexture(&(modelData.material.baseColor), "Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg", "BaseColor", 0);
 #else
-    geometryPass.createTexture(&(material.normal), "../Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg", "Normal", 1);
-    // geometryPass.createTexture(&(material.roughness), "Assets/t-shirt-lp/textures/T_shirt_roughness.jpg", "Roughness", 2);
-    // geometryPass.createTexture(&(material.metallic), "Assets/Textures/rustediron1-alt2-Unreal-Engine/rustediron2_metallic.png", "Metallic", 3);
-    // geometryPass.createTexture(&(material.ao), "Assets/t-shirt-lp/textures/T_shirt_AO.jpg", "AmbientOcclussion", 4);
-    geometryPass.createTexture(&(material.baseColor), "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg", "BaseColor", 0);
-#endif
-#else
-
-    geometryPass.createTexture(&(material.normal), "Assets/t-shirt-lp/textures/T_shirt_normal.png", "Normal", 1);
-    // geometryPass.createTexture(&(material.roughness), "Assets/t-shirt-lp/textures/T_shirt_roughness.jpg", "Roughness", 2);
-    // geometryPass.createTexture(&(material.metallic), "Assets/Textures/rustediron1-alt2-Unreal-Engine/rustediron2_metallic.png", "Metallic", 3);
-    // geometryPass.createTexture(&(material.ao), "Assets/t-shirt-lp/textures/T_shirt_AO.jpg", "AmbientOcclussion", 4);
-    geometryPass.createTexture(&(material.baseColor), "Assets/t-shirt-lp/textures/T_shirt_albedo.jpg", "BaseColor", 0);
-
+    geometryPass.createTexture(&(modelData.material.normal),    fileNames[pick].normal,    "Normal",    1);
+    geometryPass.createTexture(&(modelData.material.baseColor), fileNames[pick].baseColor, "BaseColor", 0);
 #endif
 
     /** Start Create Decals Texture **/
 #ifdef __EMSCRIPTEN__
-    decalsPass.createTexture(&(material.decalBaseColor), "Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), "Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
 #else
-    decalsPass.createTexture(&(material.decalBaseColor), "../Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), "../Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
 #endif
     decalsPass.setInt("iChannel1", 0);
     decalsPass.setInt("iDepth", 2);
@@ -1760,7 +1817,7 @@ int main()
      */
 
     // Create a Vertex Buffer Object and copy the vertex data to it
-    CreateBOs();
+    CreateBOs(modelData);
 
     glEnable(GL_DEPTH_TEST); 
     /**
@@ -1780,8 +1837,8 @@ int main()
 
     int click = 0;
 
-    hitPos = glm::vec3(0.0, 0.0, 0.0);
-    hitNor = glm::vec3(1.0, 1.0, 1.0);
+    modelData.bvo.hitPos = glm::vec3(0.0, 0.0, 0.0);
+    modelData.bvo.hitNor = glm::vec3(1.0, 1.0, 1.0);
 
     modelNoGuizmo = model;
 
@@ -1806,9 +1863,9 @@ int main()
         viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
     }
     
-    rayTrace(mousePositionX, mousePositionY, widthHeight, modelDataVertices, 
-             indexes, projection, view, model, false,
-             /** Out **/ hitNor, hitPos, decalProjector);
+    rayTrace(mousePositionX, mousePositionY, widthHeight, 
+             /** In and Out **/ modelData,
+             projection, view, model, false);
 
     std::cout << "Dec Width: " << +widthDecal << " Dec Height: "
               << +heightDecal << std::endl;
@@ -1826,11 +1883,7 @@ int main()
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
-    modelDataVertices.clear();
-    modelDataNormals.clear();
-    modelDataTextureCoordinates.clear();
-    modelDataTangents.clear();
-    indexes.clear();
+    ClearModelVertexData(modelData);
     //delete[] mesh.Vertices;
     //delete[] mesh.Normals;
     //delete[] mesh.Faces;
@@ -1849,7 +1902,7 @@ void updateViewMatrix()
     glm::mat4 rotate = glm::mat4_cast(orientation);
     
     glm::mat4 translate = glm::mat4(1.0f);
-    glm::vec3 eye = centroid - glm::vec3(-m_cameraState.position, m_cameraState.zoom);
+    glm::vec3 eye = modelData.Bbox.centroid - glm::vec3(-m_cameraState.position, m_cameraState.zoom);
     translate = glm::translate(translate, -eye);
     view = translate * rotate;
 }
@@ -1879,7 +1932,7 @@ void mouse_press(SDL_Event& event)
         case SDL_BUTTON_RIGHT:
         {
             // Raytracing.
-            isTracing = true;
+            modelData.bvo.isTracing = true;
             break;
         }
         if (CAMERA == TRACK_BALL)
@@ -1918,7 +1971,7 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
         }
         case SDL_BUTTON_RIGHT:
         {
-            isTracing = false;
+            modelData.bvo.isTracing = false;
             break;
         }
         if (CAMERA == TRACK_BALL)
@@ -1992,11 +2045,11 @@ void mouse_motion(SDL_Event& event)
         }
     }
     // Raytrace.
-    if (isTracing)
+    if (modelData.bvo.isTracing)
     {
-        rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, modelDataVertices,
-                 indexes, projection, view, model, false,
-                 /* Out */hitNor, hitPos, decalProjector);
+        rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
+                 /* In and Out */modelData, 
+                 projection, view, model, false);
     }
 }
 
@@ -2254,6 +2307,33 @@ void main_loop()
         CAMERA = TRACK_BALL;
         //std::cout << "Trackball" << std::endl;
     }
+    static const char* modelsToSelect[]{ "Workboot", "Clay", "Shirt" };
+    static const char* selectedModel = modelsToSelect[2];
+    if (ImGui::BeginCombo("Model", selectedModel, 0))
+    {
+        for (int n = 0; n < IM_ARRAYSIZE(modelsToSelect); n++)
+        {
+            bool is_selected = (selectedModel == modelsToSelect[n]);
+            if (ImGui::Selectable(modelsToSelect[n], is_selected))
+                selectedModel = modelsToSelect[n];
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+        }
+        ImGui::EndCombo();
+    }
+    //std::cout << "CAMERA: " << CAMERA << std::endl;
+    if (strcmp(selectedModel, "Workboot") == 0)
+    {
+        currentModel = WORKBOOT;
+    }
+    else if (strcmp(selectedModel, "Clay") == 0)
+    {
+        currentModel = CLAY;
+    }
+    else
+    {
+        currentModel = SHIRT;
+    }
     if (ImGui::Button("Split Screen"))
     {
         splitScreen = !splitScreen;
@@ -2321,12 +2401,12 @@ void main_loop()
     glBindFramebuffer(GL_FRAMEBUFFER, depthFramebuffer.framebuffer);
 
     depthPrePass.use();
-    glBindVertexArray(VAO); 
-    depthPrePass.setMat4("decalProjector", decalProjector);
+    glBindVertexArray(modelData.openGLObject.VAO); 
+    depthPrePass.setMat4("decalProjector", modelData.bvo.decalProjector);
     glViewport(0, 0, WIDTH/4, HEIGHT/4);
 
     glClear(GL_DEPTH_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     /** End Depth Pre-Pass **/
 
@@ -2346,15 +2426,15 @@ void main_loop()
     decalsPass.setInt("iScale", scale);
     decalsPass.setFloat("iFlip", flipFloat);
     decalsPass.setFloat("iBlend", blend);
-    decalsPass.setMat4("decalProjector", decalProjector);
+    decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
     decalsPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
 
-    glBindVertexArray(VAO);
+    glBindVertexArray(modelData.openGLObject.VAO);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, material.baseColor);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, material.decalBaseColor);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
 
@@ -2362,7 +2442,7 @@ void main_loop()
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     if (downloadImage == 1 || frame == 0u)
     {
@@ -2389,14 +2469,14 @@ void main_loop()
         glViewport(0, 0, WIDTH, HEIGHT);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(VAO);
+    glBindVertexArray(modelData.openGLObject.VAO);
     deferredPass.use();
     deferredPass.setMat4("model", model);
     deferredPass.setMat4("projection", projectionHalf);
     deferredPass.setMat4("view", view);
     deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, material.normal);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
     // glActiveTexture(GL_TEXTURE2);
@@ -2413,7 +2493,7 @@ void main_loop()
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(0);
@@ -2429,13 +2509,13 @@ void main_loop()
         hitPosition.setMat4("model",      model);
         hitPosition.setMat4("projection", projectionHalf);
         hitPosition.setMat4("view",       view);
-        renderLineCube(bboxMin, bboxMax);
+        renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
     }
 
     if (showHitPoint)
     {
         glm::mat4 hitPositionModel = model;
-        hitPositionModel = glm::translate(hitPositionModel, hitPos);
+        hitPositionModel = glm::translate(hitPositionModel, modelData.bvo.hitPos);
         hitPositionModel = glm::scale(hitPositionModel, glm::vec3(0.01f));
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2457,7 +2537,7 @@ void main_loop()
         hitPosition.setMat4("model",      model);
         hitPosition.setMat4("projection", projectionHalf);
         hitPosition.setMat4("view",       view);
-        renderFrustum(decalProjector);
+        renderFrustum(modelData.bvo.decalProjector);
     }
     
     if (splitScreen)
@@ -2471,7 +2551,7 @@ void main_loop()
         //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindVertexArray(VAO);
+        glBindVertexArray(modelData.openGLObject.VAO);
         deferredPass.use();
         deferredPass.setMat4("model", modelSide);
         deferredPass.setMat4("projection", projectionSide);
@@ -2481,7 +2561,7 @@ void main_loop()
                                                 -0.064962, 0.388481, -4.221102, 1.000000));*/
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, material.normal);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         // glActiveTexture(GL_TEXTURE2);
@@ -2495,7 +2575,7 @@ void main_loop()
         deferredPass.setInt("iNormals", 0);//enableNormals);
         deferredPass.setFloat("iTime", iTime);
 
-        glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
@@ -2508,7 +2588,7 @@ void main_loop()
         //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindVertexArray(VAO);
+        glBindVertexArray(modelData.openGLObject.VAO);
         deferredPass.use();
         deferredPass.setMat4("model", modelTop);
         deferredPass.setMat4("projection", projectionSide);
@@ -2518,7 +2598,7 @@ void main_loop()
                                                 0.0, 0.0, -1.0, 1.0));*/
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, material.normal);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
         // glActiveTexture(GL_TEXTURE2);
@@ -2532,7 +2612,7 @@ void main_loop()
         deferredPass.setInt("iNormals", 0);//enableNormals);
         deferredPass.setFloat("iTime", iTime);
 
-        glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
