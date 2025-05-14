@@ -1708,20 +1708,22 @@ std::vector<std::string> split(std::string text, char delim)
     return vec;
 }
 
+/*struct Light
+{
+    glm::vec3 lightPos = glm::vec3(0.0f);
+    glm::
+}*/
+
 int main()
 {
 #ifdef __EMSCRIPTEN__
-    fileNames[0].mesh = "Assets/Pilot/source/PilotShirtDraco.glb";
+    fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
     fileNames[0].normal = "../Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
 
-    fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
+    fileNames[1].mesh = "../Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpeg";
     fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpeg";
-
-    fileNames[2].mesh = "../Assets/RV/source/RV.glb";
-    fileNames[2].baseColor = "../Assets/RV/textures/clay_baseColor.png";
-    fileNames[2].normal = "../Assets/Clay/textures/map_normals.jpg";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
