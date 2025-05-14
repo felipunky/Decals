@@ -297,6 +297,8 @@ const void printModelData(const ModelData& modelData)
                  "OpengGL VBO TexCoords: " << modelData.openGLObject.VBOTextureCoordinates << "\n" <<
                  "OpengGL EBO: "           << modelData.openGLObject.EBO                   << "\n" <<
                  "OpengGL VAO: "           << modelData.openGLObject.VAO                   << "\n" <<
+                 "Texture BaseColor: "     << modelData.material.baseColor                 << "\n" <<
+                 "Texture Normal: "        << modelData.material.normal                    << "\n" <<
     std::endl;
 }
 
@@ -2246,30 +2248,117 @@ void key_up(SDL_Event& event)
  }
  */
 
-void regenerateTexture(Shader& shader, frameBuffer& framebuffer, unsigned int* texture, const std::string& fileName, const std::string& samplerName, const int& uniform)
+enum MaterialTextureType
+{
+    BASE_COLOR,
+    NORMAL,
+    METALLIC,
+    ROUGHNESS,
+    AO
+};
+
+void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName)
 {
     shader.use();
     glDeleteTextures(1, &(framebuffer.texture));
-    glDeleteTextures(1, texture);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-    shader.createTexture(texture, fileName, samplerName, uniform);
+    int textureTypeInt = (int)materialTextureType;
+    std::string textureType = "";
+    isGLTF = false;
+    std::cout << "isGLTF: " << isGLTF << std::endl;
+    std::cout << "Material texture Type: " << textureTypeInt << std::endl;
+    switch (textureTypeInt)
+    {
+        // BaseColor
+        case 0:
+        {
+            textureType = "BaseColor";
+            glDeleteTextures(1, &(modelData.material.baseColor));
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+            glGenTextures(1, &(framebuffer.texture));
+            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+            shader.createTexture(&(modelData.material.baseColor), fileName, textureType, textureTypeInt);
+            break;
+        }
+        // Normal
+        case 1:
+        {
+            textureType = "Normal";
+            glDeleteTextures(1, &(modelData.material.normal));
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+            glGenTextures(1, &(framebuffer.texture));
+            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+            shader.createTexture(&(modelData.material.normal), fileName, textureType, textureTypeInt);
+            break;
+        }
+        // Metallic
+        case 2:
+        {
+            textureType = "Metallic";
+            glDeleteTextures(1, &(modelData.material.metallic));
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+            glGenTextures(1, &(framebuffer.texture));
+            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+            shader.createTexture(&(modelData.material.metallic), fileName, textureType, textureTypeInt);
+            break;
+        }
+        // Roughness
+        case 3:
+        {
+            textureType = "Roughness";
+            glDeleteTextures(1, &(modelData.material.roughness));
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+            glGenTextures(1, &(framebuffer.texture));
+            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+            shader.createTexture(&(modelData.material.roughness), fileName, textureType, textureTypeInt);
+            break;
+        }
+        // AO
+        case 4:
+        {
+            textureType = "AO";
+            glDeleteTextures(1, &(modelData.material.ao));
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+            glGenTextures(1, &(framebuffer.texture));
+            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+            shader.createTexture(&(modelData.material.ao), fileName, textureType, textureTypeInt);
+            break;
+        }
+        default:
+        {
+            break;
+        }
+    }
+    std::cout << textureType << std::endl;
 }
 
-void regenerateModel(Shader& shader, ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal)
+void regenerateModel(ModelData& modelData, Shader& shader, ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal)
 {
-    /*ClearModelVertexData(modelData);
-    modelData = modelsData[1];
-    isGLTF = true;
-    flipper = true;
-    regenerateTexture(geometryPass, textureSpaceFramebuffer, &(modelData.material.baseColor), fileNames[0].normal, "BaseColor", 0);
-    regenerateTexture(geometryPass, textureSpaceFramebuffer, &(modelData.material.normal), fileNames[0].normal, "Normal", 1);
-    CreateBOs(modelData)*/
     ClearModelVertexData(modelData);
     modelData = newModelData;
     isGLTF = true;
     flipper = true;
-    regenerateTexture(shader, framebuffer, &(modelData.material.baseColor), fileNameBaseColor, "BaseColor", 0);
-    regenerateTexture(shader, framebuffer, &(modelData.material.normal),    fileNameNormal,    "Normal",    1);
+    regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor);
+    regenerateTexture(shader, modelData, NORMAL, framebuffer, fileNameNormal);
     CreateBOs(modelData);
 }
 
@@ -2448,7 +2537,8 @@ void main_loop()
         if (currentModel != SHIRT)
         {
             currentModel = SHIRT;
-            regenerateModel(geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
+            regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
+            printModelData(modelData);
             /*ClearModelVertexData(modelData);
             modelData = modelsData[0];
             isGLTF = !true;
@@ -2471,7 +2561,8 @@ void main_loop()
         if (currentModel != WORKBOOT)
         {
             currentModel = WORKBOOT;
-            regenerateModel(geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
+            regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
+            printModelData(modelData);
             /*ClearModelVertexData(modelData);
             modelData = modelsData[1];
             isGLTF = true;
