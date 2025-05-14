@@ -1,4 +1,4 @@
-precision mediump float;
+precision highp float;
 
 in vec2 TexCoords;
 in vec3 WorldPos;
@@ -18,7 +18,9 @@ uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
 
-#define BIAS 0.00005
+uniform float bias;
+
+//#define BIAS 0.0001
 
 bool CheckBox(vec3 uv)
 {
@@ -36,7 +38,7 @@ void main()
         clip = 0.;
     }
     float depth = texture(iDepth, decalUV.xy).r;
-    if (abs(decalUV.z - BIAS) > depth)
+    if (abs(decalUV.z - bias) > depth)
     {
         decalUV *= 0.;
         clip = 0.;

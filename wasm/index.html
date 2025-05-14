@@ -406,6 +406,15 @@
                     ev.preventDefault();
                 }
 
+                canv.onmousedown = function(e)
+                {
+                    if (e.button == 1)
+                    {
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+
                 /** End Drag and drop.**/
             }
         </script>

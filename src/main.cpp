@@ -46,6 +46,7 @@ int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
 const float SPEED = 5.0f;
 // How much time between frames.
 float deltaTime = 0.0f, lastFrame = 0.0f;
+const float depthBias = 1e-4;
 
 SDL_Window* window;
 SDL_GLContext context;
@@ -1433,10 +1434,17 @@ void recomputeCamera()
     #endif
 }
 
+float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 1E-5)
+{
+    return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
+}
+
 void reloadModel(ModelData& modelData)
 {
     BuildBVH(modelData);
     CreateBOs(modelData);
+    float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
+    decalsPass.setFloat("bias", biasDepthComparison);
     std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
 }
 
@@ -1708,11 +1716,58 @@ std::vector<std::string> split(std::string text, char delim)
     return vec;
 }
 
-/*struct Light
+struct Light
 {
-    glm::vec3 lightPos = glm::vec3(0.0f);
-    glm::
-}*/
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::mat4 model    = glm::mat4(1.0f);
+    glm::vec3 color    = glm::vec3(1.0f);
+    bool toggle = true;
+};
+Light light;
+
+void readModelsPreload(ModelData& modelData, std::vector<ModelData>& modelsData, 
+                       const std::vector<ModelFileNames>& fileNames, const int& pick)
+{
+    for (uint8_t i = 0u; i < fileNames.size(); ++i)
+    {
+        ClearModelVertexData(modelsData[i]);
+        if (fileExists(fileNames[i].mesh))
+        {
+            std::cout << "File: " << fileNames[i].mesh << " exists" << std::endl;
+        }
+        else
+        {
+            std::cout << "File: " << fileNames[i].mesh << " does not exist" << std::endl;
+        }
+
+        std::vector<std::string> splittedMeshName = split(fileNames[i].mesh, '.');
+        std::cout << "splittedMeshName size: " << splittedMeshName.size() << std::endl;
+        std::string fileType = splittedMeshName[splittedMeshName.size() - 1];
+        std::cout << "File type: " << fileType << std::endl;
+        if (fileType == "glb" || fileType == "gltf")
+        {
+            tinygltf::Model modelGLTF;
+            if (!GLTF::loadModel(modelGLTF, fileNames[i].mesh))
+            {
+#ifdef EXCEPTIONS
+                throw std::runtime_error("load GLTF Error!");
+#else
+                std::cout << "Load GLTF Error!" << std::endl;
+#endif
+            }
+            loadGLTF(modelGLTF, modelsData[i]);
+        }
+        else if (fileType == "obj")
+        {
+            std::string fileString = fileToString(fileNames[i].mesh);
+            ObjLoader(fileString, modelsData[i]);
+        }
+         // Build the acceleration structure for ray tracing.
+        BuildBVH(modelsData[i]); 
+    }
+    ClearModelVertexData(modelData);
+    modelData = modelsData[pick];
+}
 
 int main()
 {
@@ -1771,59 +1826,16 @@ int main()
     const int pick = 0;
 
     /**
-     * Start Read Models
+     * Start Pre-load Models
      */
-    for (uint8_t i = 0u; i < fileNames.size(); ++i)
-    {
-        //int i = pick;
-        ClearModelVertexData(modelsData[i]);
-        if (fileExists(fileNames[i].mesh))
-        {
-            std::cout << "File: " << fileNames[i].mesh << " exists" << std::endl;
-        }
-        else
-        {
-            std::cout << "File: " << fileNames[i].mesh << " does not exist" << std::endl;
-        }
-
-        std::vector<std::string> splittedMeshName = split(fileNames[i].mesh, '.');
-        std::cout << "splittedMeshName size: " << splittedMeshName.size() << std::endl;
-        std::string fileType = splittedMeshName[splittedMeshName.size() - 1];
-        std::cout << "File type: " << fileType << std::endl;
-        if (fileType == "glb" || fileType == "gltf")
-        {
-            tinygltf::Model modelGLTF;
-            if (!GLTF::loadModel(modelGLTF, fileNames[i].mesh))
-            {
-#ifdef EXCEPTIONS
-                throw std::runtime_error("load GLTF Error!");
-#else
-                std::cout << "Load GLTF Error!" << std::endl;
-#endif
-            }
-            loadGLTF(modelGLTF, modelsData[i]);
-        }
-        else if (fileType == "obj")
-        {
-            std::string fileString = fileToString(fileNames[i].mesh);
-            ObjLoader(fileString, modelsData[i]);
-        }
-        /**
-         * End Read Models
-         */
-
-        // Build the acceleration structure for ray tracing.
-        BuildBVH(modelsData[i]);
-        //reloadModel(modelsData[i]);
-
-        //centroid = (bboxMin + bboxMax) * 0.5f;
-        std::cout << "2nd BBox Center: {x: " << modelsData[i].Bbox.centroid.x << ", y: " << modelsData[i].Bbox.centroid.y << ", z:" << modelsData[i].Bbox.centroid.z << "}\n";
-        //camPos = centroid + glm::vec3(0.0f, 0.0f, 5.0f);//glm::vec3( 0.0f, -0.7f, 5.0f ); 
-    }
-    ClearModelVertexData(modelData);
-    modelData = modelsData[pick];
-    //BuildBVH(modelData);
+    readModelsPreload(modelData, modelsData, fileNames, pick);
+    /**
+     * End Pre-load Models
+     */
     
+    /**
+     *  Start Create Model Textures 
+     */
     geometryPass.use();
 
 #ifdef __EMSCRIPTEN__
@@ -1833,8 +1845,13 @@ int main()
     geometryPass.createTexture(&(modelData.material.baseColor), fileNames[pick].baseColor, "BaseColor", 0);
     geometryPass.createTexture(&(modelData.material.normal),    fileNames[pick].normal,    "Normal",    1);
 #endif
+    /**
+     *  End Create Model Textures
+     */
 
-    /** Start Create Decals Texture **/
+    /**
+     *  Start Create Decals Texture 
+     */
 #ifdef __EMSCRIPTEN__
     decalsPass.createTexture(&(modelData.material.decalBaseColor), "Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
 #else
@@ -1842,7 +1859,9 @@ int main()
 #endif
     decalsPass.setInt("iChannel1", 0);
     decalsPass.setInt("iDepth", 2);
-    /** End Create Decals Texture **/
+    /**
+     *  Start Create Decals Texture
+     */
 
     /** Start Depth Buffer **/
     depthFramebuffer = createAndAttachDepthPrePassRbo();
@@ -1851,6 +1870,10 @@ int main()
     /** Start Texture Space Buffer **/
     createAndAttachTextureSpaceRbo();
     /** End Texture Space Buffer **/
+
+    // Pass bias from Bbox.
+    float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
+    decalsPass.setFloat("bias", biasDepthComparison);
 
     /**
      * End Shader Setup
@@ -1871,6 +1894,9 @@ int main()
 	// Create the camera (eye).
 	view = glm::mat4(1.0f);
 	modelData.modelMatrix = glm::mat4(1.0f);
+
+    light.position = glm::vec3(0.0f);
+    light.model = glm::mat4(0.0f);
 
     iTime = 0.0f;
 
@@ -2288,6 +2314,8 @@ void regenerateModel(ModelData& modelData, Shader& shader, ModelData& newModelDa
     modelData = newModelData;
     regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor);
     regenerateTexture(shader, modelData, NORMAL, framebuffer, fileNameNormal);
+    float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
+    decalsPass.setFloat("bias", biasDepthComparison);
     CreateBOs(modelData);
 }
 
@@ -2313,6 +2341,24 @@ void main_loop()
     {
         recomputeDecalBaseColorTexture();
     }
+
+    /**
+     * Start Light Setup
+     */
+    const float speed = 0.5f;
+    float timeSpeed = iTime * speed;
+    float sinTime = sinf(timeSpeed) * 2.0f;
+    float cosTime = cosf(timeSpeed) * 2.0f;
+    glm::vec3 lightPosition = (modelData.Bbox.centroid +
+                               glm::vec3(0.0f, modelData.Bbox.bboxMax.y, 0.0f));
+    glm::vec3 rotateLight = glm::vec3(sinTime, 1.0f, cosTime);
+    rotateLight += lightPosition;
+    light.model = glm::mat4(1.0f);
+    light.model = glm::translate(light.model, rotateLight);
+    light.position = glm::vec3(light.model * glm::vec4(light.position, 1.0f));
+    /**
+     * End Ligtht Setup
+     */
 
     /**
      * Start ImGui
@@ -2479,6 +2525,10 @@ void main_loop()
     {
         normalMap = !normalMap;
     }
+    if (ImGui::Button("See Light"))
+    {
+        light.toggle = !light.toggle;
+    }
     ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
     ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
     ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
@@ -2631,6 +2681,7 @@ void main_loop()
     // glBindTexture(GL_TEXTURE_2D, material.ao);
 
     deferredPass.setVec3("viewPos", camPos);
+    deferredPass.setVec3("lightPos", light.position);
     deferredPass.setFloat("iTime", iTime);
     deferredPass.setInt("iFlipper", flipper);
     deferredPass.setInt("iNormals", enableNormals);
@@ -2655,6 +2706,7 @@ void main_loop()
         hitPosition.setMat4("model",      modelData.modelMatrix);
         hitPosition.setMat4("projection", projectionHalf);
         hitPosition.setMat4("view",       view);
+        hitPosition.setVec3("color",      glm::vec3(0.0f, 0.0f, 1.0f));
         renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
     }
 
@@ -2671,6 +2723,7 @@ void main_loop()
         hitPosition.setMat4("model",      hitPositionModel);
         hitPosition.setMat4("projection", projectionHalf);
         hitPosition.setMat4("view",       view);
+        hitPosition.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
         renderCube();
     }
 
@@ -2683,9 +2736,26 @@ void main_loop()
         hitPosition.setMat4("model",      modelData.modelMatrix);
         hitPosition.setMat4("projection", projectionHalf);
         hitPosition.setMat4("view",       view);
+        hitPosition.setVec3("color",      glm::vec3(0.0f, 1.0f, 0.0f));
         renderFrustum(modelData.bvo.decalProjector);
     }
     
+    if (light.toggle)
+    {
+        glm::mat4 lightPositionModel = light.model;
+        lightPositionModel = glm::scale(lightPositionModel, glm::vec3(0.05f));
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glEnable(GL_DEPTH_TEST);
+
+        hitPosition.use();
+        hitPosition.setMat4("model",      lightPositionModel);
+        hitPosition.setMat4("projection", projectionHalf);
+        hitPosition.setMat4("view",       view);
+        hitPosition.setVec3("color",      light.color);
+        renderCube();
+    }
+
     if (splitScreen)
     {
         // Side View.
@@ -2716,6 +2786,7 @@ void main_loop()
         // glBindTexture(GL_TEXTURE_2D, material.ao);
 
         deferredPass.setVec3("viewPos", camPos);
+        deferredPass.setVec3("lightPos", light.position);
         deferredPass.setFloat("iTime", iTime);
         deferredPass.setInt("iFlipper", flipper);
         deferredPass.setInt("iNormals", 0);//enableNormals);
@@ -2753,6 +2824,7 @@ void main_loop()
         // glBindTexture(GL_TEXTURE_2D, material.ao);
 
         deferredPass.setVec3("viewPos", camPos);
+        deferredPass.setVec3("lightPos", light.position);
         deferredPass.setFloat("iTime", iTime);
         deferredPass.setInt("iFlipper", flipper);
         deferredPass.setInt("iNormals", 0);//enableNormals);

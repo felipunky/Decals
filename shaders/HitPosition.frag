@@ -8,7 +8,9 @@ uniform mat4 model;
 uniform mat4 view;                                         
 uniform mat4 projection; 
 
+uniform vec3 color;
+
 void main()
 {    
-    FragColor = vec4(vec3(1., 0., 0.), 1.);
+    FragColor = vec4(color, 1.);
 }
