@@ -1,21 +1,22 @@
 precision mediump float;
 
-//layout (location = 0)
 in vec3 VertexPosition;
-//layout (location = 1)
 in vec3 VertexNormals;
-//layout (location = 2)
 in vec2 VertexTextureCoords;
-//layout (location = 3)
 in vec4 VertexTangents;
 
-out vec3 positions;                             
+out vec3 Positions;                             
 out vec2 TexCoords;
-out mat3 TBN;                                    
+out mat3 TBN;   
+out vec3 TangentLightPos;
+out vec3 TangentViewPos;
+out vec3 TangentFragPos;
 
 uniform mat4 model;                                        
 uniform mat4 view;                                         
 uniform mat4 projection;   
+uniform vec3 viewPos;
+uniform float iTime;
 
 mat2 rot(const in float a)
 {
@@ -25,16 +26,31 @@ mat2 rot(const in float a)
 }
 
 void main()                                                
-{                
-  TexCoords = VertexTextureCoords;     
-  
-  vec3 T = normalize(vec3(model * vec4(VertexTangents.xyz, 0.0)));
-  vec3 N = normalize(vec3(model * vec4(VertexNormals,      0.0)));
-  vec3 B = cross(N, T) * VertexTangents.w;
-  TBN = mat3(T, B, N);
+{               
 
-  vec4 worldPos = model * vec4(VertexPosition.xyz, 1.);                  
+  TexCoords = VertexTextureCoords;
+
+  vec4 worldPos = model * vec4(VertexPosition.xyz, 1.); 
+  Positions = worldPos.xyz;
+  
+  mat3 normalMatrix = transpose(inverse(mat3(model)));
+  vec3 T = normalize(normalMatrix * VertexTangents.xyz);
+  vec3 N = normalize(normalMatrix * VertexNormals.xyz);
+  T = normalize(T - dot(T, N) * N);
+  vec3 B = cross(N, T);
+
+  TBN = transpose(mat3(T, B, N));
+
+  float speed = 0.5 * iTime;
+  vec2 sinCosNormalized = vec2(sin(speed), cos(speed))*0.5+0.5;
+
+  vec3 lightPos = vec3(sinCosNormalized.x, 1.0, sinCosNormalized.y);
+
+  TangentLightPos = TBN * lightPos;
+  TangentViewPos  = TBN * viewPos;
+  TangentFragPos  = TBN * Positions;
+        
   vec4 objPos = projection * view * worldPos;
-  positions = objPos.xyz;
+  
   gl_Position = objPos;              
 }                                                      

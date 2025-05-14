@@ -1,8 +1,11 @@
 precision mediump float;
 
-in vec3 positions;                               
+in vec3 Positions;                               
 in vec2 TexCoords;
 in mat3 TBN; 
+in vec3 TangentLightPos;
+in vec3 TangentViewPos;
+in vec3 TangentFragPos;
 
 out vec4 FragColor;
 
@@ -74,7 +77,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
 
 void main()
 {             
-    vec3 FragPos    = positions;//texture(gPosition, TexCoords).xyz;
+    vec3 FragPos    = Positions;//texture(gPosition, TexCoords).xyz;
     vec2 texCoordsAlbedo = TexCoords;
     if (iFlipAlbedo == 1.0)
     {
@@ -84,10 +87,8 @@ void main()
 
     if (iNormals == 1)
     {
-
-        vec3 light = vec3(2.+sin(iTime), 1.0, -6.+cos(iTime));
-        vec3 L = normalize(light - FragPos);
-        vec3 V = normalize(viewPos - FragPos);
+        vec3 L = normalize(TangentLightPos - TangentFragPos);
+        vec3 V = normalize(TangentViewPos - TangentFragPos);
 
         if (iFlipper == 1)
         {
@@ -95,21 +96,22 @@ void main()
         }
 
         vec3 N = getNormalFromMap(texCoordsAlbedo);
-        N = normalize(TBN * N);
+        //N = normalize(TBN * N);
 
         vec3 halfWayVector = normalize(L + V);
 
         float spe = pow(max(dot(N, halfWayVector), 0.0), 32.0);
 
-        vec3 col = albedo * max(0., dot(L, -N));
-        col += spe * vec3(0.4);
+        vec3 col = albedo * max(0., dot(L, N));
+        col += spe * 0.2 + albedo * 0.1;
 
-        FragColor = vec4(pow(col, vec3(2.2)), 1.0);
+        FragColor = vec4(pow(col, vec3(0.45454)), 1.0);
 
     }
     else
     {
-        FragColor = vec4(pow(albedo, vec3(2.2)), 1.0);
+        FragColor //= vec4(albedo, 1.0);
+                  = vec4(pow(albedo, vec3(0.45454)), 1.0);
     }
 
     // float metallic  = 0.0;//texture(gMetallic, TexCoords).r;

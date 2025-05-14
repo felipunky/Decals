@@ -164,10 +164,10 @@ void updateViewMatrix();
  */
 
 /** Start ImGui params. */
-bool showBBox      = false;
-bool showProjector = false;
-bool showHitPoint  = false;
-bool normalMap     = false;
+bool showBBox      = !false;
+bool showProjector = !false;
+bool showHitPoint  = !false;
+bool normalMap     = !false;
 bool splitScreen   = false;
 
 int scale = 1;
@@ -292,11 +292,11 @@ const void printModelData(const ModelData& modelData)
                  "Tangents size: "         << modelData.tangents.size()                    << "\n" <<
                  "Indices size: "          << modelData.indexes.size()                     << "\n" <<
                  "OpenGL VBO Vertices: "   << modelData.openGLObject.VBOVertices           << "\n" <<
-                 "OpengGL VBO Normals: "   << modelData.openGLObject.VBONormals            << "\n" <<
-                 "OpengGL VBO Tangents: "  << modelData.openGLObject.VBOTangents           << "\n" <<
-                 "OpengGL VBO TexCoords: " << modelData.openGLObject.VBOTextureCoordinates << "\n" <<
-                 "OpengGL EBO: "           << modelData.openGLObject.EBO                   << "\n" <<
-                 "OpengGL VAO: "           << modelData.openGLObject.VAO                   << "\n" <<
+                 "OpenGL VBO Normals: "    << modelData.openGLObject.VBONormals            << "\n" <<
+                 "OpenGL VBO Tangents: "   << modelData.openGLObject.VBOTangents           << "\n" <<
+                 "OpenGL VBO TexCoords: "  << modelData.openGLObject.VBOTextureCoordinates << "\n" <<
+                 "OpenGL EBO: "            << modelData.openGLObject.EBO                   << "\n" <<
+                 "OpenGL VAO: "            << modelData.openGLObject.VAO                   << "\n" <<
                  "Texture BaseColor: "     << modelData.material.baseColor                 << "\n" <<
                  "Texture Normal: "        << modelData.material.normal                    << "\n" <<
     std::endl;
@@ -1766,7 +1766,7 @@ int main()
     
     //ObjLoader("Assets/t-shirt-lp/source/Shirt.obj");
 
-    const int pick = 1;
+    const int pick = 0;
 
     /**
      * Start Read Models
@@ -1905,9 +1905,9 @@ int main()
         viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
     }
     
-    rayTrace(mousePositionX, mousePositionY, widthHeight, 
-             /** In and Out **/ modelData,
-             projection, view, false);
+    //rayTrace(mousePositionX, mousePositionY, widthHeight,
+    //         /** In and Out **/ modelData,
+    //         projection, view, false);
 
     std::cout << "Dec Width: " << +widthDecal << " Dec Height: "
               << +heightDecal << std::endl;
@@ -2197,56 +2197,6 @@ void key_up(SDL_Event& event)
         }
     }
 }
-/*
- EMSCRIPTEN_KEEPALIVE
- void loadAlbedo(uint8_t* buf, int bufSize)
- {
-#ifdef OPTIMIZE
-#else
-     std::cout << "Reading albedo from file!" << std::endl;
-     std::cout << "Albedo buffer size: " << bufSize << std::endl;
-#endif
-     geometryPass.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
- }
- EMSCRIPTEN_KEEPALIVE
- void passSizeAlbedo(uint16_t* buf, int bufSize)
- {
-#ifdef OPTIMIZE
-#else
-     std::cout << "Reading Albedo image size!" << std::endl;
-#endif
-     int width  = (int)buf[0];
-     int height = (int)buf[1];
-
-     geometryPass.use();
-     geometryPass.Width  = width;
-     geometryPass.Height = height;
-     flipAlbedo = (int)buf[2];
-     
-#ifdef OPTIMIZE
-#else
-     std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
-#endif
-     glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
-     glDeleteTextures(1, &(modelData.material.baseColor));
-
-     glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
-
-     glGenTextures(1, &(textureSpaceFramebuffer.texture));
-     glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
-     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
-     
-#ifdef OPTIMIZE
-#else
-     std::cout << "Albedo Width: "  << +geometryPass.Width  << std::endl;
-     std::cout << "Albedo Height: " << +geometryPass.Height << std::endl;
-     std::cout << "Changed Albedo: "<< +flipAlbedo        << std::endl;
-#endif
- }
- */
 
 enum MaterialTextureType
 {
@@ -2257,90 +2207,60 @@ enum MaterialTextureType
     AO
 };
 
+void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    glGenTextures(1, &(framebuffer.texture));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+}
+
 void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName)
 {
     shader.use();
     glDeleteTextures(1, &(framebuffer.texture));
     int textureTypeInt = (int)materialTextureType;
     std::string textureType = "";
+    unsigned int* materialType = {};
     isGLTF = false;
-    std::cout << "isGLTF: " << isGLTF << std::endl;
-    std::cout << "Material texture Type: " << textureTypeInt << std::endl;
     switch (textureTypeInt)
     {
         // BaseColor
         case 0:
         {
             textureType = "BaseColor";
-            glDeleteTextures(1, &(modelData.material.baseColor));
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-            glGenTextures(1, &(framebuffer.texture));
-            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
-            shader.createTexture(&(modelData.material.baseColor), fileName, textureType, textureTypeInt);
+            materialType = &(modelData.material.baseColor);
             break;
         }
         // Normal
         case 1:
         {
             textureType = "Normal";
-            glDeleteTextures(1, &(modelData.material.normal));
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-            glGenTextures(1, &(framebuffer.texture));
-            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
-            shader.createTexture(&(modelData.material.normal), fileName, textureType, textureTypeInt);
+            materialType = &(modelData.material.normal);
             break;
         }
         // Metallic
         case 2:
         {
             textureType = "Metallic";
-            glDeleteTextures(1, &(modelData.material.metallic));
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-            glGenTextures(1, &(framebuffer.texture));
-            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
-            shader.createTexture(&(modelData.material.metallic), fileName, textureType, textureTypeInt);
+            materialType = &(modelData.material.metallic);
             break;
         }
         // Roughness
         case 3:
         {
             textureType = "Roughness";
-            glDeleteTextures(1, &(modelData.material.roughness));
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-            glGenTextures(1, &(framebuffer.texture));
-            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
-            shader.createTexture(&(modelData.material.roughness), fileName, textureType, textureTypeInt);
+            materialType = &(modelData.material.roughness);
             break;
         }
         // AO
         case 4:
         {
             textureType = "AO";
-            glDeleteTextures(1, &(modelData.material.ao));
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-            glGenTextures(1, &(framebuffer.texture));
-            glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
-            shader.createTexture(&(modelData.material.ao), fileName, textureType, textureTypeInt);
+            materialType = &(modelData.material.ao);
             break;
         }
         default:
@@ -2348,15 +2268,22 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
             break;
         }
     }
-    std::cout << textureType << std::endl;
+    glDeleteTextures(1, materialType);
+    // Make decal recreation prettier some time in the future.
+    shader.createTexture(materialType, fileName, textureType, textureTypeInt);
+#ifdef __EMSCRIPTEN__
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), "Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
+#else
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), "../Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
+#endif
+    decalsPass.setInt("iChannel1", 0);
+    regenerateFramebufferTexture(shader, framebuffer);
 }
 
 void regenerateModel(ModelData& modelData, Shader& shader, ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal)
 {
     ClearModelVertexData(modelData);
     modelData = newModelData;
-    isGLTF = true;
-    flipper = true;
     regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor);
     regenerateTexture(shader, modelData, NORMAL, framebuffer, fileNameNormal);
     CreateBOs(modelData);
@@ -2517,8 +2444,8 @@ void main_loop()
         CAMERA = TRACK_BALL;
         //std::cout << "Trackball" << std::endl;
     }
-    static const char* modelsToSelect[]{ "Workboot", /*"Clay",*/ "Shirt" };
-    static const char* selectedModel = modelsToSelect[0];
+    static const char* modelsToSelect[]{ "Workboot", "Shirt" };
+    static const char* selectedModel = modelsToSelect[1];
     if (ImGui::BeginCombo("Model", selectedModel, 0))
     {
         for (int n = 0; n < IM_ARRAYSIZE(modelsToSelect); n++)
@@ -2532,46 +2459,15 @@ void main_loop()
         ImGui::EndCombo();
     }
     //std::cout << "CAMERA: " << CAMERA << std::endl;
-    if (strcmp(selectedModel, "Workboot") == 0)
+    if (strcmp(selectedModel, "Workboot") == 0 && currentModel != SHIRT)
     {
-        if (currentModel != SHIRT)
-        {
-            currentModel = SHIRT;
-            regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
-            printModelData(modelData);
-            /*ClearModelVertexData(modelData);
-            modelData = modelsData[0];
-            isGLTF = !true;
-            geometryPass.createTexture(&(modelData.material.baseColor), fileNames[0].baseColor, "BaseColor", 0);
-            geometryPass.createTexture(&(modelData.material.normal),    fileNames[0].normal,    "Normal",    1);
-            //reloadModel(modelData);
-            CreateBOs(modelData);*/
-            //rayTrace(WIDTH / 2, HEIGHT / 2, widthHeight,
-            //         /** In and Out **/ modelData,
-            //         projection, view, false);
-            std::cout << "Workboot" << std::endl;
-        }
+        currentModel = SHIRT;
+        regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
     }
-    /*else if (strcmp(selectedModel, "Clay") == 0)
+    else if (strcmp(selectedModel, "Shirt") == 0 && currentModel != WORKBOOT)
     {
-        currentModel = CLAY;
-    }*/
-    else if (strcmp(selectedModel, "Shirt") == 0)
-    {
-        if (currentModel != WORKBOOT)
-        {
-            currentModel = WORKBOOT;
-            regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
-            printModelData(modelData);
-            /*ClearModelVertexData(modelData);
-            modelData = modelsData[1];
-            isGLTF = true;
-            flipper = true;
-            regenerateTexture(geometryPass, textureSpaceFramebuffer, &(modelData.material.baseColor), fileNames[0].normal, "BaseColor", 0);
-            regenerateTexture(geometryPass, textureSpaceFramebuffer, &(modelData.material.normal), fileNames[0].normal, "Normal", 1);
-            CreateBOs(modelData);*/
-            std::cout << "Shirt" << std::endl;
-        }
+        currentModel = WORKBOOT;
+        regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
     }
     if (ImGui::Button("Split Screen"))
     {
@@ -2682,6 +2578,13 @@ void main_loop()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+
+    if (frame == 0u)
+    {
+        rayTrace(mousePositionX, mousePositionY, widthHeight, 
+                 /* In and Out */ modelData, 
+                 projection, view, false);
+    }
 
     if (downloadImage == 1 || frame == 0u)
     {
