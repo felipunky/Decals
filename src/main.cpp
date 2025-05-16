@@ -46,7 +46,7 @@ int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
 const float SPEED = 5.0f;
 // How much time between frames.
 float deltaTime = 0.0f, lastFrame = 0.0f;
-const float depthBias = 1e-4;
+const float depthBias = 0.00025;
 
 SDL_Window* window;
 SDL_GLContext context;
@@ -59,7 +59,7 @@ uint8_t reload = 0u;
 uint8_t downloadImage = 1u;
 std::vector<uint8_t> decalImageBuffer;
 std::vector<uint8_t> decalResult;
-uint16_t widthDecal = 1127u, heightDecal = 699u, changeDecal = 1u,
+uint16_t widthDecal = 1210u, heightDecal = 1209u, changeDecal = 1u,
          widthAlbedo,        heightAlbedo,       changeAlbedo = 0u;
 int flip = 0;
 bool flipDecal = false;
@@ -605,15 +605,6 @@ std::array<glm::vec3, 8> cubeCorners(const glm::vec3& min, const glm::vec3& max)
     };
     return kCubeCorners;
 }
-
-/*void ClearModelDataBVO(ModelData& modelData)
-{
-    modelData.bvo.accel          = nanort::BVHAccel<<#typename T#>>
-    modelData.bvo.decalProjector = glm::mat4(1.0f);
-    modelData.bvo.hitNor         = glm::vec3(1.0f);
-    modelData.bvo.hitPos         = glm::vec3(0.0f);
-    modelData.bvo.isTracing      = false;
-}*/
 
 void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight, 
               /* In and Out */ ModelData& modelData,
@@ -1932,10 +1923,6 @@ int main()
         recomputeCamera();
         viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
     }
-    
-    //rayTrace(mousePositionX, mousePositionY, widthHeight,
-    //         /** In and Out **/ modelData,
-    //         projection, view, false);
 
     std::cout << "Dec Width: " << +widthDecal << " Dec Height: "
               << +heightDecal << std::endl;
@@ -2531,8 +2518,17 @@ void main_loop()
     }
     ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
     ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
-    ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
-    ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f); 
+
+    bool projectorModified = false;
+    projectorModified |= ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
+    projectorModified |= ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
+    if (projectorModified)
+    {
+        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+                 /* In and Out */modelData, 
+                 projection, view, false);
+    }
+
     if (ImGui::Button("Flip decals"))
     {
         flipDecal = !flipDecal;
@@ -2578,6 +2574,13 @@ void main_loop()
 
     deltaTime = time_internal - lastFrame;
     lastFrame = time_internal;
+
+    if (frame == 0u)
+    {
+        rayTrace(mousePositionX, mousePositionY, widthHeight,
+                 /* In and Out */ modelData,
+                 projection, view, false);
+    }
 
     // render
     // ------
@@ -2630,13 +2633,6 @@ void main_loop()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
-
-    if (frame == 0u)
-    {
-        rayTrace(mousePositionX, mousePositionY, widthHeight, 
-                 /* In and Out */ modelData, 
-                 projection, view, false);
-    }
 
     if (downloadImage == 1 || frame == 0u)
     {
