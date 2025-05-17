@@ -67,44 +67,7 @@ void main()
         projectedDecal.rgb = albedoMap.rgb;
     }
 
-    float minDecalsUV = (min(decalUV.x, decalUV.y), decalUV.z);
-    float reciprocalMinDecalsUV = minDecalsUV;
+    float minDecalsUV = (max(decalUV.x, decalUV.y), decalUV.z);
 
-    vec4 colorOut = mix( projectedDecal, albedoMap, smoothstep( 0.0, reciprocalMinDecalsUV * iBlend, boxSDF ) );
-    //vec4 colorOut = mix(projectedDecal, albedoMap, boxSDFRemapped * iBlend);
-    FragColor = colorOut;
-
-    /*float clip = 1.0;
-    if (CheckBox(decalUV, 0.01))
-    {
-        decalUV *= 0.;
-        clip = 0.;
-    }
-    float depth = texture(iDepth, decalUV.xy).r;
-    if (abs(decalUV.z - bias) > depth)
-    {
-        decalUV *= 0.;
-        clip = 0.;
-    }
-
-    if (iFlip == 1.0)
-    {
-        decalUV.y = 1. - decalUV.y;
-    }
-
-    decalUV = decalUV * float(iScale);
-
-    vec4 projectedDecal = texture(iChannel0, decalUV.xy);
-    vec4 albedoMap      = texture(iChannel1, texCoords);
-
-    // Sample the decal texture using the Decal UVs.
-    projectedDecal = mix(projectedDecal, albedoMap, iBlend) * clip;
-    albedoMap      *= vec4(1. - clip);
-
-    vec4 color = projectedDecal + albedoMap;
-    if (projectedDecal.a < 0.1)
-    {
-        color = albedoMap;
-    }
-    FragColor = color;*/
+    vec4 colorOut = mix( projectedDecal, albedoMap, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
 }

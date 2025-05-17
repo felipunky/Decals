@@ -1067,7 +1067,10 @@ void ComputeTangents(ModelData& modelData)
         const glm::vec3& t = tan1[a];
 
         // Gram-Schmidt orthogonalize
-        modelData.tangents[a].xyz = glm::normalize(t - n * glm::dot(n, t));
+        glm::vec3 tangent = glm::normalize(t - n * glm::dot(n, t));
+        modelData.tangents[a].x = tangent.x; 
+        modelData.tangents[a].y = tangent.y; 
+        modelData.tangents[a].z = tangent.z; 
 
         // Calculate handedness
         modelData.tangents[a].w = (glm::dot(glm::cross(n, t), tan2[a]) < 0.0f) ? -1.0f : 1.0f;
@@ -1075,65 +1078,6 @@ void ComputeTangents(ModelData& modelData)
     tan1.clear();
     tan2.clear();
 }
-
-/*void ComputeTangents(ModelData& modelData)
-{
-    modelData.tangents.clear();
-    modelData.tangents.resize(modelData.indexes.size(), glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
-    for(unsigned int i = 0; i < modelData.indexes.size(); i += 3)
-    {
-
-        glm::vec3 vertex0 = modelData.vertices[modelData.indexes[i]];
-        glm::vec3 vertex1 = modelData.vertices[modelData.indexes[i + 1]];
-        glm::vec3 vertex2 = modelData.vertices[modelData.indexes[i + 2]];
-
-
-        glm::vec3 deltaPos;
-        if(vertex0 == vertex1)
-        {
-            deltaPos = vertex2 - vertex0;
-        }
-        else
-        {
-            deltaPos = vertex1 - vertex0;
-        }
-        glm::vec2 uv0 = modelData.textureCoordinates[modelData.indexes[i]];
-        glm::vec2 uv1 = modelData.textureCoordinates[modelData.indexes[i + 1]];
-        glm::vec2 uv2 = modelData.textureCoordinates[modelData.indexes[i + 2]];
-
-        glm::vec2 deltaUV1 = uv1 - uv0;
-        glm::vec2 deltaUV2 = uv2 - uv0;
-
-        glm::vec3 tan; // tangents
-
-        // avoid divion by 0
-        if(deltaUV1.s != 0)
-        {
-            tan = deltaPos / deltaUV1.s;
-        }
-        else
-        {
-            tan = deltaPos / 1.0f;
-        }
-        glm::vec3 normal = modelData.normals[modelData.indexes[i]];
-        
-        glm::vec3 vectorOne = vertex1 - vertex0;
-        glm::vec3 vectorTwo = vertex2 - vertex0;
-
-        float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-        glm::vec3 tan2 = glm::vec3((deltaUV1.x * vectorTwo.x - deltaUV2.x * vectorOne.x) * r, 
-                                   (deltaUV1.x * vectorTwo.y - deltaUV2.x * vectorOne.y) * r,
-                                   (deltaUV1.x * vectorTwo.z - deltaUV2.x * vectorOne.z) * r);
-        
-        tan = glm::normalize(tan - glm::dot(normal, tan) * normal);
-        glm::vec4 tangent = glm::vec4(tan, (glm::dot(glm::cross(normal, tan), tan2) < 0.0f ? -1.0f : 1.0f));
-
-        // write into array - for each vertex of the face the same value
-        modelData.tangents[modelData.indexes[i]]     = tangent;
-        modelData.tangents[modelData.indexes[i + 1]] = tangent;
-        modelData.tangents[modelData.indexes[i + 2]] = tangent;
-    }
-}*/
 
 void ClearModelVertexData(ModelData& modelData)
 {
@@ -1533,6 +1477,13 @@ void recomputeDecalBaseColorTexture()
     // Bind the uniform sampler.
     decalsPass.use();
     decalsPass.setInt("iChannel0", 1);
+
+    // Update decal through triggering the ray trace.
+    mousePositionX = WIDTH / 2;
+    mousePositionY = HEIGHT / 2;
+    rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+             /* In and Out */ modelData, 
+             projection, view, false);
 }
 
 float max(const glm::vec3& x)
@@ -2059,12 +2010,9 @@ void mouse_press(SDL_Event& event)
             // Raytracing.
             modelData.bvo.isTracing = true;
             // Raytrace.
-            if (modelData.bvo.isTracing)
-            {
-                rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
-                         /* In and Out */modelData, 
-                         projection, view, false);
-            }
+            rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
+                     /* In and Out */modelData, 
+                     projection, view, false);
             break;
         }
         if (CAMERA == TRACK_BALL)
@@ -2603,7 +2551,8 @@ void main_loop()
     glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
     ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
     ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
-    if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation)
+    if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation ||
+        frame == 1u)
     {
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
                  /* In and Out */ modelData, 

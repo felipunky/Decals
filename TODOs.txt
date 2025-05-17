@@ -1,0 +1,4 @@
+-Add touch events
+-Parallax Occlusion Mapping
+-Refactor the decal upload
+-Play with the smoothstep for the Decal's SDF
