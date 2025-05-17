@@ -17,6 +17,7 @@ uniform sampler2D iDepth;
 uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
+uniform float iAlphaCut;
 
 uniform float bias;
 
@@ -61,12 +62,15 @@ void main()
     vec4 projectedDecal = texture(iChannel0, decalUV.xy);
     vec4 albedoMap      = texture(iChannel1, texCoords);
 
-    if (projectedDecal.a < bias)
+    if (projectedDecal.a < (1.0 - iAlphaCut))
     {
         projectedDecal.rgb = albedoMap.rgb;
     }
 
-    vec4 colorOut = mix( projectedDecal, albedoMap, smoothstep( 0.0, iBlend, boxSDF ) );
+    float minDecalsUV = (min(decalUV.x, decalUV.y), decalUV.z);
+    float reciprocalMinDecalsUV = minDecalsUV;
+
+    vec4 colorOut = mix( projectedDecal, albedoMap, smoothstep( 0.0, reciprocalMinDecalsUV * iBlend, boxSDF ) );
     //vec4 colorOut = mix(projectedDecal, albedoMap, boxSDFRemapped * iBlend);
     FragColor = colorOut;
 

@@ -173,6 +173,7 @@ bool splitScreen   = false;
 
 int scale = 1;
 float blend = 0.5f;
+float alphaCut = 0.1f;
 
 float zoomSide = 0.5f,
         zoomTop  = zoomSide;
@@ -1012,7 +1013,70 @@ std::bitset<256> VertexBitHash(glm::vec3* v, glm::vec3* n, glm::vec2* u) {
     return bits;
 }
 
+// https://web.archive.org/web/20110708081637/http://www.terathon.com/code/tangent.html
 void ComputeTangents(ModelData& modelData)
+{
+    modelData.tangents.clear();
+    modelData.tangents.resize(modelData.indexes.size(), glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+    std::vector<glm::vec3> tan1(modelData.vertices.size()),
+                           tan2(modelData.vertices.size());
+    for (unsigned int i = 0; i < modelData.indexes.size(); i += 3)
+    {
+        unsigned int idx0 = modelData.indexes[i];
+        unsigned int idx1 = modelData.indexes[i+1];
+        unsigned int idx2 = modelData.indexes[i+2];
+
+        glm::vec3 vertex0 = modelData.vertices[idx0];
+        glm::vec3 vertex1 = modelData.vertices[idx1];
+        glm::vec3 vertex2 = modelData.vertices[idx2];
+
+        glm::vec2 uv0 = modelData.textureCoordinates[idx0];
+        glm::vec2 uv1 = modelData.textureCoordinates[idx1];
+        glm::vec2 uv2 = modelData.textureCoordinates[idx2];
+
+        float x1 = vertex1.x - vertex0.x;
+        float x2 = vertex2.x - vertex0.x;
+        float y1 = vertex1.y - vertex0.y;
+        float y2 = vertex2.y - vertex0.y;
+        float z1 = vertex1.z - vertex0.z;
+        float z2 = vertex2.z - vertex0.z;
+
+        float s1 = uv1.x - uv0.x;
+        float s2 = uv2.x - uv0.x;
+        float t1 = uv1.y - uv0.y;
+        float t2 = uv2.y - uv0.y;
+
+        float r = 1.0f / (s1 * t2 - s2 * t1);
+        glm::vec3 sdir((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r,
+            (t2 * z1 - t1 * z2) * r);
+        glm::vec3 tdir((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r,
+            (s1 * z2 - s2 * z1) * r);
+
+        tan1[idx0] += sdir;
+        tan1[idx1] += sdir;
+        tan1[idx2] += sdir;
+
+        tan2[idx0] += tdir;
+        tan2[idx1] += tdir;
+        tan2[idx2] += tdir;
+    }
+    for (long a = 0; a < modelData.vertices.size(); a++)
+    {
+        const glm::vec3& n = modelData.vertices[a];
+        const glm::vec3& t = tan1[a];
+
+        // Gram-Schmidt orthogonalize
+        modelData.tangents[a].xyz = glm::normalize(t - n * glm::dot(n, t));
+
+        // Calculate handedness
+        modelData.tangents[a].w = (glm::dot(glm::cross(n, t), tan2[a]) < 0.0f) ? -1.0f : 1.0f;
+    }
+    tan1.clear();
+    tan2.clear();
+}
+
+/*void ComputeTangents(ModelData& modelData)
 {
     modelData.tangents.clear();
     modelData.tangents.resize(modelData.indexes.size(), glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -1069,7 +1133,7 @@ void ComputeTangents(ModelData& modelData)
         modelData.tangents[modelData.indexes[i + 1]] = tangent;
         modelData.tangents[modelData.indexes[i + 2]] = tangent;
     }
-}
+}*/
 
 void ClearModelVertexData(ModelData& modelData)
 {
@@ -1994,6 +2058,13 @@ void mouse_press(SDL_Event& event)
         {
             // Raytracing.
             modelData.bvo.isTracing = true;
+            // Raytrace.
+            if (modelData.bvo.isTracing)
+            {
+                rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
+                         /* In and Out */modelData, 
+                         projection, view, false);
+            }
             break;
         }
         if (CAMERA == TRACK_BALL)
@@ -2014,9 +2085,9 @@ void mouse_press(SDL_Event& event)
     }
 }
 
-void mouse_unpressed(SDL_MouseButtonEvent& button)
+void mouse_unpressed(SDL_Event& event)
 {
-    switch (button.button)
+    switch (event.button.button)
     {
         case SDL_BUTTON_LEFT:
         {
@@ -2032,6 +2103,9 @@ void mouse_unpressed(SDL_MouseButtonEvent& button)
         }
         case SDL_BUTTON_RIGHT:
         {
+            glm::ivec2 currentMouse = glm::ivec2(event.motion.x, -event.motion.y + HEIGHT);
+            mousePositionX = currentMouse.x;
+            mousePositionY = currentMouse.y;
             modelData.bvo.isTracing = false;
             break;
         }
@@ -2304,6 +2378,12 @@ void regenerateModel(ModelData& modelData, Shader& shader, ModelData& newModelDa
     float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
     CreateBOs(modelData);
+    updateViewMatrix();
+    mousePositionX = WIDTH / 2;
+    mousePositionY = HEIGHT / 2;
+    rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+             /* In and Out */ modelData, 
+             projection, view, false);
 }
 
 void main_loop()
@@ -2393,7 +2473,7 @@ void main_loop()
             }
             case SDL_MOUSEBUTTONUP:
             {
-                mouse_unpressed(event.button);
+                mouse_unpressed(event);
                 break;
             }
             case SDL_MOUSEMOTION:
@@ -2518,14 +2598,15 @@ void main_loop()
     }
     ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
     ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
+    ImGui::SliderFloat("Alpha Cut", &alphaCut, 0.0f, 1.0f);
 
-    bool projectorModified = false;
-    projectorModified |= ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
-    projectorModified |= ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
-    if (projectorModified)
+    glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
+    ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
+    ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
+    if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation)
     {
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
-                 /* In and Out */modelData, 
+                 /* In and Out */ modelData, 
                  projection, view, false);
     }
 
@@ -2575,13 +2656,6 @@ void main_loop()
     deltaTime = time_internal - lastFrame;
     lastFrame = time_internal;
 
-    if (frame == 0u)
-    {
-        rayTrace(mousePositionX, mousePositionY, widthHeight,
-                 /* In and Out */ modelData,
-                 projection, view, false);
-    }
-
     // render
     // ------
     /** Start Depth Pre-Pass **/
@@ -2616,6 +2690,7 @@ void main_loop()
     decalsPass.setInt("iScale", scale);
     decalsPass.setFloat("iFlip", flipFloat);
     decalsPass.setFloat("iBlend", blend);
+    decalsPass.setFloat("iAlphaCut", alphaCut);
     decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
     decalsPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
 
