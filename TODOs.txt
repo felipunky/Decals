@@ -2,3 +2,9 @@
 -Parallax Occlusion Mapping
 -Refactor the decal upload
 -Play with the smoothstep for the Decal's SDF
+-Fix broken decal, to trigger:
+	-Upload a decal, change model
+-Fix broken download of Decal on WASM:
+	-To trigger, change model through the GUI.
+-Optimize it for the web
+-Implement JFA for proper alpha cutting

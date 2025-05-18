@@ -69,5 +69,6 @@ void main()
 
     float minDecalsUV = (max(decalUV.x, decalUV.y), decalUV.z);
 
-    vec4 colorOut = mix( projectedDecal, albedoMap, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
+    vec3 colorOut = mix( projectedDecal.rgb, albedoMap.rgb, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
+    FragColor = vec4(colorOut, 1.0);
 }

@@ -63,6 +63,7 @@ uint16_t widthDecal = 1210u, heightDecal = 1209u, changeDecal = 1u,
          widthAlbedo,        heightAlbedo,       changeAlbedo = 0u;
 int flip = 0;
 bool flipDecal = false;
+bool showTextureSpace = false;
 Shader depthPrePass = Shader(),
        geometryPass = Shader(),
        deferredPass = Shader(),
@@ -188,7 +189,6 @@ float iTime;
 enum MODEL
 {
     WORKBOOT,
-    CLAY,
     SHIRT
 };
 MODEL currentModel = SHIRT;
@@ -1433,7 +1433,7 @@ void recomputeCamera()
     #endif
 }
 
-float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 1E-5)
+float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.01)
 {
     return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
 }
@@ -1479,6 +1479,7 @@ void recomputeDecalBaseColorTexture()
     decalsPass.setInt("iChannel0", 1);
 
     // Update decal through triggering the ray trace.
+    updateViewMatrix();
     mousePositionX = WIDTH / 2;
     mousePositionY = HEIGHT / 2;
     rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
@@ -1829,7 +1830,15 @@ int main()
     
     //ObjLoader("Assets/t-shirt-lp/source/Shirt.obj");
 
-    const int pick = 0;
+    int pick = 0;
+    if (currentModel == SHIRT)
+    {
+        pick = 0;
+    }
+    else if (currentModel == WORKBOOT)
+    {
+        pick = 1;
+    }
 
     /**
      * Start Pre-load Models
@@ -1858,12 +1867,14 @@ int main()
     /**
      *  Start Create Decals Texture 
      */
+    decalsPass.use();
 #ifdef __EMSCRIPTEN__
     decalsPass.createTexture(&(modelData.material.decalBaseColor), "Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
 #else
     decalsPass.createTexture(&(modelData.material.decalBaseColor), "../Assets/Textures/Watchmen.png"/*Batman.jpg"*/, "iChannel0", 1);
 #endif
     decalsPass.setInt("iChannel1", 0);
+    decalsPass.setFloat("bias", computeBiasDepthComparison(modelData));
     decalsPass.setInt("iDepth", 2);
     /**
      *  Start Create Decals Texture
@@ -1878,8 +1889,7 @@ int main()
     /** End Texture Space Buffer **/
 
     // Pass bias from Bbox.
-    float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
-    decalsPass.setFloat("bias", biasDepthComparison);
+    //float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
 
     /**
      * End Shader Setup
@@ -1918,8 +1928,8 @@ int main()
 
     modelNoGuizmo = modelData.modelMatrix;
 
-    mousePositionX = WIDTH / 2;
-    mousePositionY = HEIGHT / 2;
+    //mousePositionX = WIDTH / 2;
+    //mousePositionY = HEIGHT / 2;
 
     widthHeight = glm::vec2(WIDTH, HEIGHT);
 
@@ -2235,6 +2245,20 @@ void key_up(SDL_Event& event)
     }
 }
 
+void multiple_touches(SDL_Event& event)
+{
+    SDL_MultiGestureEvent* m = (SDL_MultiGestureEvent*)&event;
+    if (m->numFingers > 1)
+    {
+        glm::ivec2 mouseDenormalize = glm::ivec2(glm::vec2(m->x, m->y) * widthHeight);
+        mousePositionX = mouseDenormalize.x;
+        mousePositionY = -mouseDenormalize.y + HEIGHT;
+        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+                 /* In and Out */modelData, 
+                 projection, view, false);
+    }
+}
+
 enum MaterialTextureType
 {
     BASE_COLOR,
@@ -2345,13 +2369,13 @@ void main_loop()
     // calculateNearFarPlane(bboxMax, centroid, /** Out **/ near, far);
     // differenceBboxMaxMin = bboxMax - bboxMin;
     projection = glm::perspective(RADIANS_30, widthHeight.x / widthHeight.y, nearPlane, farPlane);
-    glm::mat4 projectionHalf = (splitScreen ? 
-                                glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane) : 
+    glm::mat4 projectionHalf = (splitScreen ?
+                                glm::perspective(RADIANS_30, halfWidthHeight.x / widthHeight.y, nearPlane, farPlane) :
                                 projection);
     glm::mat4 projectionSide //= glm::ortho(bboxMin.x, bboxMax.x, bboxMin.y, bboxMax.y, bboxMin.z, bboxMax.z);
         = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
     //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
-    
+
     if (decalImageBuffer.size() > 0)
     {
         recomputeDecalBaseColorTexture();
@@ -2372,12 +2396,12 @@ void main_loop()
     light.model = glm::translate(light.model, rotateLight);
     light.position = glm::vec3(light.model * glm::vec4(light.position, 1.0f));
     /**
-     * End Ligtht Setup
+     * End Light Setup
      */
 
     /**
      * Start ImGui
-     */	        
+     */
     bool shiftIsPressed = false;
 
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -2387,14 +2411,6 @@ void main_loop()
     {
         ImGui_ImplSDL2_ProcessEvent(&event);
 
-        // Crude way to solve dragging lag.
-        const bool dragging = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
-        // TODO: fix this
-        /*if (SDL_GL_SetSwapInterval(dragging ? 0 : 1) == -1)
-        {
-            std::cout << "Unable to disable VSync!" << std::endl;
-        }*/
-
         insideImGui = io.WantCaptureMouse;
         keyboardImGui = io.WantCaptureKeyboard;
 
@@ -2402,7 +2418,7 @@ void main_loop()
         {
             break;
         }
-        
+
         // Only do input handling on the perspective viewport.
         bool isInPerspectiveViewport = (event.motion.x < halfWidth ? true : false);
         isInPerspectiveViewport = splitScreen ? isInPerspectiveViewport : true;
@@ -2412,7 +2428,7 @@ void main_loop()
             break;
         }
 
-        switch(event.type)
+        switch (event.type)
         {
             case SDL_MOUSEBUTTONDOWN:
             {
@@ -2437,6 +2453,11 @@ void main_loop()
             case SDL_KEYDOWN:
             {
                 key_down(event);
+                break;
+            }
+            case SDL_MULTIGESTURE:
+            {
+                multiple_touches(event);
                 break;
             }
             case SDL_WINDOWEVENT:
@@ -2482,34 +2503,41 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
-    static const char* cameraTypes[]{"FPS", "Trackball"};
+    static const char* cameraTypes[]{ "FPS", "Trackball" };
     static const char* selectedItem = cameraTypes[1];
-    if (ImGui::BeginCombo("Camera", selectedItem, 0))
+    bool cameraSelectionDirty = ImGui::BeginCombo("Camera", selectedItem, 0);
+    //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
+    if (cameraSelectionDirty)
     {
         for (int n = 0; n < IM_ARRAYSIZE(cameraTypes); n++)
         {
             bool is_selected = (selectedItem == cameraTypes[n]);
             if (ImGui::Selectable(cameraTypes[n], is_selected))
+            {
                 selectedItem = cameraTypes[n];
+            }
             if (is_selected)
+            {
                 ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+            }
         }
         ImGui::EndCombo();
-    }
-    //std::cout << "CAMERA: " << CAMERA << std::endl;
-    if (strcmp(selectedItem, "FPS") == 0)
-    {
-        CAMERA = FPS;
-        //std::cout << "FPS" << std::endl;
-    }
-    else if (strcmp(selectedItem, "Trackball") == 0)
-    {
-        CAMERA = TRACK_BALL;
-        //std::cout << "Trackball" << std::endl;
+        //std::cout << "CAMERA: " << CAMERA << std::endl;
+        if (strcmp(selectedItem, "FPS") == 0)
+        {
+            CAMERA = FPS;
+            //std::cout << "FPS" << std::endl;
+        }
+        else if (strcmp(selectedItem, "Trackball") == 0)
+        {
+            CAMERA = TRACK_BALL;
+            //std::cout << "Trackball" << std::endl;
+        }
     }
     static const char* modelsToSelect[]{ "Workboot", "Shirt" };
     static const char* selectedModel = modelsToSelect[1];
-    if (ImGui::BeginCombo("Model", selectedModel, 0))
+    bool selectedModelDirty = ImGui::BeginCombo("Model", selectedModel, 0);
+    if (selectedModelDirty)
     {
         for (int n = 0; n < IM_ARRAYSIZE(modelsToSelect); n++)
         {
@@ -2520,21 +2548,24 @@ void main_loop()
                 ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
         }
         ImGui::EndCombo();
-    }
-    //std::cout << "CAMERA: " << CAMERA << std::endl;
-    if (strcmp(selectedModel, "Workboot") == 0 && currentModel != SHIRT)
-    {
-        currentModel = SHIRT;
-        regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
-    }
-    else if (strcmp(selectedModel, "Shirt") == 0 && currentModel != WORKBOOT)
-    {
-        currentModel = WORKBOOT;
-        regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
+        if (strcmp(selectedModel, "Workboot") == 0 && currentModel != SHIRT)
+        {
+            currentModel = SHIRT;
+            regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal);
+        }
+        else if (strcmp(selectedModel, "Shirt") == 0 && currentModel != WORKBOOT)
+        {
+            currentModel = WORKBOOT;
+            regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal);
+        }
     }
     if (ImGui::Button("Split Screen"))
     {
         splitScreen = !splitScreen;
+    }
+    if (ImGui::Button("Show Texture Space"))
+    {
+        showTextureSpace = !showTextureSpace;
     }
     if (ImGui::Button("Enable Normal Map"))
     {
@@ -2554,9 +2585,9 @@ void main_loop()
     if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation ||
         frame == 1u)
     {
-        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
-                 /* In and Out */ modelData, 
-                 projection, view, false);
+        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), -mousePositionY + HEIGHT, widthHeight,
+            /* In and Out */ modelData,
+            projection, view, false);
     }
 
     if (ImGui::Button("Flip decals"))
@@ -2567,7 +2598,7 @@ void main_loop()
     {
         showBBox = !showBBox;
     }
-    if (ImGui::Button("Show Projector"))      
+    if (ImGui::Button("Show Projector"))
     {
         showProjector = !showProjector;
     }
@@ -2591,7 +2622,7 @@ void main_loop()
             lastUsing = i;
         }
     }
-    
+
     ImGui::End();
 
     flip = (flipDecal ? 1 : 0);
@@ -2614,23 +2645,30 @@ void main_loop()
     glBindFramebuffer(GL_FRAMEBUFFER, depthFramebuffer.framebuffer);
 
     depthPrePass.use();
-    glBindVertexArray(modelData.openGLObject.VAO); 
+    glBindVertexArray(modelData.openGLObject.VAO);
     depthPrePass.setMat4("decalProjector", modelData.bvo.decalProjector);
-    glViewport(0, 0, WIDTH/4, HEIGHT/4);
+    glViewport(0, 0, WIDTH / 4, HEIGHT / 4);
 
     glClear(GL_DEPTH_BUFFER_BIT);
     glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     /** End Depth Pre-Pass **/
 
-    float flipFloat = (float) flip; 
-    float flipAlbedoFloat = (float) flipAlbedo;
+    float flipFloat = (float)flip;
+    float flipAlbedoFloat = (float)flipAlbedo;
 
 
     /** Start Decal Pass **/
     glEnable(GL_DEPTH_TEST);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
+    if (!showTextureSpace)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
+    }
+    else
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
     decalsPass.use();
     decalsPass.setMat4("model", modelData.modelMatrix);
     decalsPass.setMat4("projection", projection);
@@ -2652,149 +2690,56 @@ void main_loop()
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
 
-    glViewport(0, 0, geometryPass.Width, geometryPass.Height);
+    if (!showTextureSpace)
+    {
+        glViewport(0, 0, geometryPass.Width, geometryPass.Height);
+    }
+    else
+    {
+        glViewport(0, 0, WIDTH, HEIGHT);
+    }
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
-    if (downloadImage == 1 || frame == 0u)
+    if (downloadImage == 1u || frame == 1u)
     {
         decalResult = uploadImage();
         // counter = 0;
         downloadImage = 0u;
+
+        // Get the first position for ray picking.
+        mousePositionX = WIDTH / 2;
+        mousePositionY = HEIGHT / 2;
 #ifdef OPTIMIZE
 #else
         std::cout << "Uploading image!" << std::endl;
 #endif
     }
     /** End Decal Pass **/
-
-    /** Start Light Pass **/
-    //glScissor(0, 0, WIDTH/2, HEIGHT);
-    int enableNormals = normalMap ? 1 : 0;
-    if (splitScreen)
+    if (!showTextureSpace)
     {
-        glViewport(0, 0, WIDTH/2, HEIGHT);
-    }
-    else
-    {
-        //std::cout << "Window width: " << WIDTH << " height: " << HEIGHT << " aspect: " << aspect << std::endl;
-        glViewport(0, 0, WIDTH, HEIGHT);
-    }
-    /*std::cout << "Print data before first draw call: " << std::endl;
-    printModelData(modelData);*/
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(modelData.openGLObject.VAO);
-    deferredPass.use();
-    deferredPass.setMat4("model", modelData.modelMatrix);
-    deferredPass.setMat4("projection", projectionHalf);
-    deferredPass.setMat4("view", view);
-    deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, material.metallic);
-    // glActiveTexture(GL_TEXTURE3);
-    // glBindTexture(GL_TEXTURE_2D, material.ao);
-
-    deferredPass.setVec3("viewPos", camPos);
-    deferredPass.setVec3("lightPos", light.position);
-    deferredPass.setFloat("iTime", iTime);
-    deferredPass.setInt("iFlipper", flipper);
-    deferredPass.setInt("iNormals", enableNormals);
-    deferredPass.setFloat("iTime", iTime);
-    // finally render quad
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(0);
-    
-    /** End Light Pass **/
-    
-    if (showBBox)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glEnable(GL_DEPTH_TEST);
-
-        hitPosition.use();
-        hitPosition.setMat4("model",      modelData.modelMatrix);
-        hitPosition.setMat4("projection", projectionHalf);
-        hitPosition.setMat4("view",       view);
-        hitPosition.setVec3("color",      glm::vec3(0.0f, 0.0f, 1.0f));
-        renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
-    }
-
-    if (showHitPoint)
-    {
-        glm::mat4 hitPositionModel = modelData.modelMatrix;
-        hitPositionModel = glm::translate(hitPositionModel, modelData.bvo.hitPos);
-        hitPositionModel = glm::scale(hitPositionModel, glm::vec3(0.01f));
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glEnable(GL_DEPTH_TEST);
-
-        hitPosition.use();
-        hitPosition.setMat4("model",      hitPositionModel);
-        hitPosition.setMat4("projection", projectionHalf);
-        hitPosition.setMat4("view",       view);
-        hitPosition.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-        renderCube();
-    }
-
-    if (showProjector)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glEnable(GL_DEPTH_TEST);
-
-        hitPosition.use();
-        hitPosition.setMat4("model",      modelData.modelMatrix);
-        hitPosition.setMat4("projection", projectionHalf);
-        hitPosition.setMat4("view",       view);
-        hitPosition.setVec3("color",      glm::vec3(0.0f, 1.0f, 0.0f));
-        renderFrustum(modelData.bvo.decalProjector);
-    }
-    
-    if (light.toggle)
-    {
-        glm::mat4 lightPositionModel = light.model;
-        lightPositionModel = glm::scale(lightPositionModel, glm::vec3(0.05f));
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glEnable(GL_DEPTH_TEST);
-
-        hitPosition.use();
-        hitPosition.setMat4("model",      lightPositionModel);
-        hitPosition.setMat4("projection", projectionHalf);
-        hitPosition.setMat4("view",       view);
-        hitPosition.setVec3("color",      light.color);
-        renderCube();
-    }
-
-    if (splitScreen)
-    {
-        // Side View.
-        glViewport(WIDTH/2, 0, WIDTH/2, HEIGHT/2);
-
-        // Scale for the side view.
-        glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(zoomSide, zoomSide, zoomSide));
-        modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
-
+        /** Start Light Pass **/
+        glScissor(0, 0, WIDTH / 2, HEIGHT);
+        int enableNormals = normalMap ? 1 : 0;
+        if (splitScreen)
+        {
+            glViewport(0, 0, WIDTH / 2, HEIGHT);
+        }
+        else
+        {
+            //std::cout << "Window width: " << WIDTH << " height: " << HEIGHT << " aspect: " << aspect << std::endl;
+            glViewport(0, 0, WIDTH, HEIGHT);
+        }
+        /*std::cout << "Print data before first draw call: " << std::endl;
+        printModelData(modelData);*/
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(modelData.openGLObject.VAO);
         deferredPass.use();
-        deferredPass.setMat4("model", modelSide);
-        deferredPass.setMat4("projection", projectionSide);
-        deferredPass.setMat4("view", viewPinned);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000, 
-                                                0.000000, 0.981959, 0.189095, 0.000000, 
-                                                -0.993572, 0.021407, -0.111162, 0.000000, 
-                                                -0.064962, 0.388481, -4.221102, 1.000000));*/
+        deferredPass.setMat4("model", modelData.modelMatrix);
+        deferredPass.setMat4("projection", projectionHalf);
+        deferredPass.setMat4("view", view);
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
@@ -2809,51 +2754,157 @@ void main_loop()
         deferredPass.setVec3("lightPos", light.position);
         deferredPass.setFloat("iTime", iTime);
         deferredPass.setInt("iFlipper", flipper);
-        deferredPass.setInt("iNormals", 0);//enableNormals);
+        deferredPass.setInt("iNormals", enableNormals);
         deferredPass.setFloat("iTime", iTime);
+        // finally render quad
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
 
-        // Front View.
-        glViewport(WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2);
+        /** End Light Pass **/
+    
+        if (showBBox)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_DEPTH_TEST);
 
-        // Scale for the side view.
-        glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(zoomTop, zoomTop, zoomTop));
-        //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
+            hitPosition.use();
+            hitPosition.setMat4("model", modelData.modelMatrix);
+            hitPosition.setMat4("projection", projectionHalf);
+            hitPosition.setMat4("view", view);
+            hitPosition.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
+            renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
+        }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindVertexArray(modelData.openGLObject.VAO);
-        deferredPass.use();
-        deferredPass.setMat4("model", modelTop);
-        deferredPass.setMat4("projection", projectionSide);
-        deferredPass.setMat4("view", viewPinned);/*glm::mat4(1.0, 0.0,  0.0, 0.0, 
-                                                0.0, 1.0,  0.0, 0.0, 
-                                                0.0, 0.0,  1.0, 0.0, 
-                                                0.0, 0.0, -1.0, 1.0));*/
-        deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
-        // glActiveTexture(GL_TEXTURE2);
-        // glBindTexture(GL_TEXTURE_2D, material.metallic);
-        // glActiveTexture(GL_TEXTURE3);
-        // glBindTexture(GL_TEXTURE_2D, material.ao);
+        if (showHitPoint)
+        {
+            glm::mat4 hitPositionModel = modelData.modelMatrix;
+            hitPositionModel = glm::translate(hitPositionModel, modelData.bvo.hitPos);
+            hitPositionModel = glm::scale(hitPositionModel, glm::vec3(0.01f));
 
-        deferredPass.setVec3("viewPos", camPos);
-        deferredPass.setVec3("lightPos", light.position);
-        deferredPass.setFloat("iTime", iTime);
-        deferredPass.setInt("iFlipper", flipper);
-        deferredPass.setInt("iNormals", 0);//enableNormals);
-        deferredPass.setFloat("iTime", iTime);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_DEPTH_TEST);
 
-        glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
-        
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindVertexArray(0);
+            hitPosition.use();
+            hitPosition.setMat4("model", hitPositionModel);
+            hitPosition.setMat4("projection", projectionHalf);
+            hitPosition.setMat4("view", view);
+            hitPosition.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+            renderCube();
+        }
+
+        if (showProjector)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_DEPTH_TEST);
+
+            hitPosition.use();
+            hitPosition.setMat4("model", modelData.modelMatrix);
+            hitPosition.setMat4("projection", projectionHalf);
+            hitPosition.setMat4("view", view);
+            hitPosition.setVec3("color", glm::vec3(0.0f, 1.0f, 0.0f));
+            renderFrustum(modelData.bvo.decalProjector);
+        }
+
+        if (light.toggle)
+        {
+            glm::mat4 lightPositionModel = light.model;
+            lightPositionModel = glm::scale(lightPositionModel, glm::vec3(0.05f));
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_DEPTH_TEST);
+
+            hitPosition.use();
+            hitPosition.setMat4("model", lightPositionModel);
+            hitPosition.setMat4("projection", projectionHalf);
+            hitPosition.setMat4("view", view);
+            hitPosition.setVec3("color", light.color);
+            renderCube();
+        }
+
+        if (splitScreen)
+        {
+            // Side View.
+            glViewport(WIDTH / 2, 0, WIDTH / 2, HEIGHT / 2);
+
+            // Scale for the side view.
+            glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(zoomSide, zoomSide, zoomSide));
+            modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindVertexArray(modelData.openGLObject.VAO);
+            deferredPass.use();
+            deferredPass.setMat4("model", modelSide);
+            deferredPass.setMat4("projection", projectionSide);
+            deferredPass.setMat4("view", viewPinned);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000,
+                                                    0.000000, 0.981959, 0.189095, 0.000000,
+                                                    -0.993572, 0.021407, -0.111162, 0.000000,
+                                                    -0.064962, 0.388481, -4.221102, 1.000000));*/
+            deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+            // glActiveTexture(GL_TEXTURE2);
+            // glBindTexture(GL_TEXTURE_2D, material.metallic);
+            // glActiveTexture(GL_TEXTURE3);
+            // glBindTexture(GL_TEXTURE_2D, material.ao);
+
+            deferredPass.setVec3("viewPos", camPos);
+            deferredPass.setVec3("lightPos", light.position);
+            deferredPass.setFloat("iTime", iTime);
+            deferredPass.setInt("iFlipper", flipper);
+            deferredPass.setInt("iNormals", 0);//enableNormals);
+            deferredPass.setFloat("iTime", iTime);
+
+            glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindVertexArray(0);
+
+            // Front View.
+            glViewport(WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
+
+            // Scale for the side view.
+            glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(zoomTop, zoomTop, zoomTop));
+            //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindVertexArray(modelData.openGLObject.VAO);
+            deferredPass.use();
+            deferredPass.setMat4("model", modelTop);
+            deferredPass.setMat4("projection", projectionSide);
+            deferredPass.setMat4("view", viewPinned);/*glm::mat4(1.0, 0.0,  0.0, 0.0,
+                                                    0.0, 1.0,  0.0, 0.0,
+                                                    0.0, 0.0,  1.0, 0.0,
+                                                    0.0, 0.0, -1.0, 1.0));*/
+            deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+            // glActiveTexture(GL_TEXTURE2);
+            // glBindTexture(GL_TEXTURE_2D, material.metallic);
+            // glActiveTexture(GL_TEXTURE3);
+            // glBindTexture(GL_TEXTURE_2D, material.ao);
+
+            deferredPass.setVec3("viewPos", camPos);
+            deferredPass.setVec3("lightPos", light.position);
+            deferredPass.setFloat("iTime", iTime);
+            deferredPass.setInt("iFlipper", flipper);
+            deferredPass.setInt("iNormals", 0);//enableNormals);
+            deferredPass.setFloat("iTime", iTime);
+
+            glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindVertexArray(0);
+        }
     }
 
     ImGui::Render();
