@@ -532,7 +532,7 @@ local.properties
 *.slo
 *.lo
 *.o
-*.a
+#*.a
 *.la
 *.lai
 *.so
@@ -1000,7 +1000,7 @@ _deps
 # Compiled Static libraries
 *.lai
 *.la
-*.a
+#*.a
 *.lib
 
 # Executables
@@ -1032,7 +1032,7 @@ _deps
 
 # Libraries
 *.lib
-*.a
+#*.a
 *.la
 *.lo
 
@@ -1075,3 +1075,9 @@ docs/submodules/draco/draco_encoder.js
 docs/submodules/draco/draco_encoder.js
 docs/submodules/draco/draco_decoder.js
 docs/draco/draco_features.h
+docs/libtinyobjloader.a
+docs/libtinygltf.a
+docs/libnanort.a
+docs/libImGuizmo.a
+docs/libimgui.a
+docs/libdraco.a
