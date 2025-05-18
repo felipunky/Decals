@@ -1433,7 +1433,7 @@ void recomputeCamera()
     #endif
 }
 
-float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.01)
+float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.0001)
 {
     return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
 }
@@ -2146,12 +2146,39 @@ void mouse_motion(SDL_Event& event)
     }
 }
 
-void mouse_wheel(SDL_MouseWheelEvent& mouseWheel)
+void updateZoom(SDL_MouseWheelEvent* mouseWheel)
+{
+    m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel->preciseY;
+    updateViewMatrix();
+}
+
+void mouse_wheel(SDL_Event& event)
 {
     if (CAMERA == TRACK_BALL)
     {
-        m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel.preciseY;
-        updateViewMatrix();
+        SDL_MouseWheelEvent* mouseWheel = (SDL_MouseWheelEvent*)&event;
+        if (splitScreen)
+        {
+            if (mouseWheel->mouseX < (WIDTH / 2))
+            {
+                updateZoom(mouseWheel);
+                std::cout << "Left Screen" << std::endl;
+            }
+            else if (mouseWheel->mouseY > (HEIGHT / 2))
+            {
+                zoomSide = mouseWheel->preciseY + 1.0f;
+                std::cout << "Right Botton Screen: Mouse Wheel Precise Y: " << mouseWheel->preciseY << std::endl;
+            }
+            else
+            {
+                zoomTop = mouseWheel->preciseY + 1.0f;
+                std::cout << "Right Top Screen Mouse: Wheel Precise Y: " << mouseWheel->preciseY << std::endl;
+            }
+        }
+        else
+        {
+            updateZoom(mouseWheel);
+        }
     }
 }
 
@@ -2248,15 +2275,19 @@ void key_up(SDL_Event& event)
 void multiple_touches(SDL_Event& event)
 {
     SDL_MultiGestureEvent* m = (SDL_MultiGestureEvent*)&event;
-    if (m->numFingers > 1)
+    if (m->numFingers == 2)
     {
-        glm::ivec2 mouseDenormalize = glm::ivec2(glm::vec2(m->x, m->y) * widthHeight);
+        glm::ivec2 mouseDenormalize = glm::ivec2(glm::vec2(m->x, m->y) * glm::vec2(WIDTH, HEIGHT));
         mousePositionX = mouseDenormalize.x;
-        mousePositionY = -mouseDenormalize.y + HEIGHT;
+        mousePositionY = mouseDenormalize.y;
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
                  /* In and Out */modelData, 
                  projection, view, false);
+        m_drag.mouseWheelButtonActive = false;
+        m_drag.mouseWheelButtonActiveSince = 0u;
+        isActiveFPS = false;
     }
+    std::cout << "Number of fingers: " << m->numFingers << std::endl;
 }
 
 enum MaterialTextureType
@@ -2351,7 +2382,7 @@ void regenerateModel(ModelData& modelData, Shader& shader, ModelData& newModelDa
     decalsPass.setFloat("bias", biasDepthComparison);
     CreateBOs(modelData);
     updateViewMatrix();
-    mousePositionX = WIDTH / 2;
+    mousePositionX = WIDTH / (splitScreen ? 4 : 2);
     mousePositionY = HEIGHT / 2;
     rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
              /* In and Out */ modelData, 
@@ -2420,7 +2451,7 @@ void main_loop()
         }
 
         // Only do input handling on the perspective viewport.
-        bool isInPerspectiveViewport = (event.motion.x < halfWidth ? true : false);
+        bool isInPerspectiveViewport = (event.motion.x < halfWidthHeight.x ? true : false);
         isInPerspectiveViewport = splitScreen ? isInPerspectiveViewport : true;
 
         if (!isInPerspectiveViewport)
@@ -2447,7 +2478,7 @@ void main_loop()
             }
             case SDL_MOUSEWHEEL:
             {
-                mouse_wheel(event.wheel);
+                mouse_wheel(event);
                 break;
             }
             case SDL_KEYDOWN:
