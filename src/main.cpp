@@ -52,6 +52,7 @@ SDL_Window* window;
 SDL_GLContext context;
 const char* glsl_version = nullptr;//"#version 300 es";
 static bool main_loop_running = true;
+bool frameIsEven = false;
 
 int newVerticesSize;
 int flipAlbedo = 0;
@@ -64,11 +65,13 @@ uint16_t widthDecal = 1210u, heightDecal = 1209u, changeDecal = 1u,
 int flip = 0;
 bool flipDecal = false;
 bool showTextureSpace = false;
-Shader depthPrePass = Shader(),
-       geometryPass = Shader(),
-       deferredPass = Shader(),
-       hitPosition  = Shader(),
-       decalsPass   = Shader();
+Shader depthPrePass   = Shader(),
+       geometryPass   = Shader(),
+       deferredPass   = Shader(),
+       hitPosition    = Shader(),
+       decalsPass     = Shader(),
+       JFAPass        = Shader(),
+       fullScreenPass = Shader();
 // Pass GLSL version to the shaders.
 #if defined(_WIN32)
 std::string GLSLVersion = "#version 150 core\n";
@@ -326,11 +329,12 @@ void recomputeCamera();
 struct frameBuffer
 {
     unsigned int framebuffer;
-    unsigned int texture;
+    std::vector<unsigned int> textures;
 };
 
 frameBuffer depthFramebuffer;
 frameBuffer textureSpaceFramebuffer;
+std::vector<frameBuffer> jfaFrameBuffer(2);
 
 bool isGLTF = false;
 
@@ -466,17 +470,17 @@ extern "C"
 #else
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
+        glDeleteTextures(1, &(textureSpaceFramebuffer.textures[0]));
         glDeleteTextures(1, &(modelData.material.baseColor));
 
         glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &(textureSpaceFramebuffer.texture));
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+        glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
         
 #ifdef OPTIMIZE
 #else
@@ -511,17 +515,17 @@ extern "C"
 #else
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(textureSpaceFramebuffer.texture));
+        glDeleteTextures(1, &(textureSpaceFramebuffer.textures[0]));
         glDeleteTextures(1, &(modelData.material.normal));
 
         glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-        glGenTextures(1, &(textureSpaceFramebuffer.texture));
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+        glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
 
         geometryPass.Width  = width;
         geometryPass.Height = height;
@@ -1447,7 +1451,7 @@ void recomputeCamera()
     #endif
 }
 
-float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.0001)
+float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.0005)
 {
     return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
 }
@@ -1634,22 +1638,34 @@ void initializeShaderSource()
     decalsPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
     decalsPassAttributeLocations[1] = normalPositionAttributeQualifierName;
     decalsPassAttributeLocations[2] = texCoordsPositionAttributeQualiferName;
+
+    std::vector<std::string> JFAScreenPassAttributeLocations(2);
+    JFAScreenPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    JFAScreenPassAttributeLocations[1] = texCoordsPositionAttributeQualiferName;
+
+    std::vector<std::string> fullScreenPassAttributeLocations(2);
+    fullScreenPassAttributeLocations[0] = vertexPositionAttributeQualifierName;
+    fullScreenPassAttributeLocations[1] = texCoordsPositionAttributeQualiferName;
 #ifdef __EMSCRIPTEN__
-    depthPrePass  = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag",      depthPrePassAttributeLocations, GLSLVersion);
-    geometryPass  = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag",      geometryPassAttributeLocations, GLSLVersion);
-    deferredPass  = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag", deferredPassAttributeLocations, GLSLVersion);
-    hitPosition   = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag",  hitPositionAttributeLocations,  GLSLVersion);
-    decalsPass    = Shader("shaders/Decals.vert",       "shaders/Decals.frag",       decalsPassAttributeLocations,   GLSLVersion);
+    depthPrePass   = Shader("shaders/DBuffer.vert",      "shaders/DBuffer.frag",      depthPrePassAttributeLocations,   GLSLVersion);
+    geometryPass   = Shader("shaders/GBuffer.vert",      "shaders/GBuffer.frag",      geometryPassAttributeLocations,   GLSLVersion);
+    deferredPass   = Shader("shaders/DeferredPass.vert", "shaders/DeferredPass.frag", deferredPassAttributeLocations,   GLSLVersion);
+    hitPosition    = Shader("shaders/HitPosition.vert",  "shaders/HitPosition.frag",  hitPositionAttributeLocations,    GLSLVersion);
+    decalsPass     = Shader("shaders/Decals.vert",       "shaders/Decals.frag",       decalsPassAttributeLocations,     GLSLVersion);
+    JFAPass        = Shader("shaders/JFA.vert",          "shaders/JFA.frag",          JFAScreenPassAttributeLocations,  GLSLVersion);
+    fullScreenPass = Shader("shaders/FullScreen.vert",   "shaders/FullScreen.frag",   fullScreenPassAttributeLocations, GLSLVersion);
 #else
-    depthPrePass  = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag",      depthPrePassAttributeLocations, GLSLVersion);
-    geometryPass  = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag",      geometryPassAttributeLocations, GLSLVersion);
-    deferredPass  = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag", deferredPassAttributeLocations, GLSLVersion);
-    hitPosition   = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag",  hitPositionAttributeLocations,  GLSLVersion);
-    decalsPass    = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag",       decalsPassAttributeLocations,   GLSLVersion);
+    depthPrePass   = Shader("../shaders/DBuffer.vert",      "../shaders/DBuffer.frag",      depthPrePassAttributeLocations,   GLSLVersion);
+    geometryPass   = Shader("../shaders/GBuffer.vert",      "../shaders/GBuffer.frag",      geometryPassAttributeLocations,   GLSLVersion);
+    deferredPass   = Shader("../shaders/DeferredPass.vert", "../shaders/DeferredPass.frag", deferredPassAttributeLocations,   GLSLVersion);
+    hitPosition    = Shader("../shaders/HitPosition.vert",  "../shaders/HitPosition.frag",  hitPositionAttributeLocations,    GLSLVersion);
+    decalsPass     = Shader("../shaders/Decals.vert",       "../shaders/Decals.frag",       decalsPassAttributeLocations,     GLSLVersion);
+    JFAPass        = Shader("../shaders/JFA.vert",          "../shaders/JFA.frag",          JFAScreenPassAttributeLocations,  GLSLVersion);
+    fullScreenPass = Shader("../shaders/FullScreen.vert",   "../shaders/FullScreen.frag",   fullScreenPassAttributeLocations, GLSLVersion);
 #endif
 }
 
-frameBuffer createAndAttachDepthPrePassRbo()
+void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
 {
     /** Start Depth Buffer **/
     glGenFramebuffers(1, &(depthFramebuffer.framebuffer));
@@ -1658,8 +1674,10 @@ frameBuffer createAndAttachDepthPrePassRbo()
     depthPrePass.use();
 
     // create and attach depth buffer (renderbuffer)
-    glGenTextures(1, &(depthFramebuffer.texture));
-    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
+    depthFramebuffer.textures = std::vector<unsigned int>(1);
+
+    glGenTextures(1, &(depthFramebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
 
@@ -1670,7 +1688,7 @@ frameBuffer createAndAttachDepthPrePassRbo()
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthFramebuffer.texture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthFramebuffer.textures[0], 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) 
     {
         std::cerr << "Framebuffer configuration failed" << std::endl;
@@ -1678,12 +1696,11 @@ frameBuffer createAndAttachDepthPrePassRbo()
 
     unsigned int attachments[1] = {GL_NONE};
     glDrawBuffers(1, attachments);
-    std::cout << "Depth frame buffer: framebuffer: " << depthFramebuffer.framebuffer << " texture: " << depthFramebuffer.texture << std::endl;
+    std::cout << "Depth frame buffer: framebuffer: " << depthFramebuffer.framebuffer << " texture: " << depthFramebuffer.textures[0] << std::endl;
     /** End Depth Buffer **/
-    return depthFramebuffer;
 }
 
-frameBuffer createAndAttachTextureSpaceRbo()
+void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
 {
     /** Start Texture Space Buffer **/
     glGenFramebuffers(1, &(textureSpaceFramebuffer.framebuffer));
@@ -1696,12 +1713,14 @@ frameBuffer createAndAttachTextureSpaceRbo()
     std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
 #endif
 
-    glGenTextures(1, &(textureSpaceFramebuffer.texture));
-    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+    textureSpaceFramebuffer.textures = std::vector<unsigned int>(1);
+
+    glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.texture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
 
     // Set the list of draw buffers.
     unsigned int drawBuffersFBO[1] = {GL_COLOR_ATTACHMENT0};
@@ -1718,8 +1737,37 @@ frameBuffer createAndAttachTextureSpaceRbo()
     // deferredPass.setInt("gRoughness", 3);
     // deferredPass.setInt("gAO",        4);
     /** End Texture Space Buffer **/
-    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " texture: " << textureSpaceFramebuffer.texture << std::endl;
-    return textureSpaceFramebuffer;
+    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " texture: " << textureSpaceFramebuffer.textures[0] << std::endl;
+}
+
+void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY)
+{
+    /*
+     * Start Render Buffer Object
+     */
+    glGenFramebuffers(1, &(frameBuffer.framebuffer));
+    glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.framebuffer);
+
+    frameBuffer.textures = std::vector<unsigned int>(1);
+    glGenTextures(1, &(frameBuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBuffer.textures[0], 0);
+
+    // Set the list of draw buffers.
+    unsigned int drawBuffersFBO[1] = { GL_COLOR_ATTACHMENT0 };
+    glDrawBuffers(1, drawBuffersFBO);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    std::cout << "JFA Frame buffer: framebuffer: " << frameBuffer.framebuffer << " texture: " << frameBuffer.textures[0] << std::endl;
+    /*
+     * End Render Buffer Object
+     */
 }
 
 bool fileExists(const std::string& file)
@@ -1896,12 +1944,24 @@ int main()
      */
 
     /** Start Depth Buffer **/
-    depthFramebuffer = createAndAttachDepthPrePassRbo();
+    createAndAttachDepthPrePassRbo(depthFramebuffer);
     /** End Depth Buffer **/
 
     /** Start Texture Space Buffer **/
-    createAndAttachTextureSpaceRbo();
+    createAndAttachTextureSpaceRbo(textureSpaceFramebuffer);
     /** End Texture Space Buffer **/
+
+    /** Start JFA Buffer **/
+    JFAPass.use();
+    JFAPass.setInt("iChannel0", 0);
+    //JFAPass.setInt("iFrame", 0);
+    //JFAPass.setVec2("iResolution", glm::vec2(widthDecal, heightDecal));
+    //JFAPass.setInt("iChannel1", 1);
+    for (size_t i = 0; i < jfaFrameBuffer.size(); ++i)
+    {
+        createAndAttachRboJFA(jfaFrameBuffer[i], WIDTH, HEIGHT);// widthDecal, heightDecal);
+    }
+    /** End JFA Buffer **/
 
     // Pass bias from Bbox.
     //float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
@@ -1920,6 +1980,16 @@ int main()
     glEnable(GL_DEPTH_TEST); 
     /**
      * End Geometry Definition
+     */
+
+    /**
+     * Start Full Screen Quad
+     */
+    fullScreenPass.use();
+    fullScreenPass.setInt("iChannel0", 0);
+    renderQuad();
+    /**
+     * End Full Screen Quad
      */
     
 	// Create the camera (eye).
@@ -2150,6 +2220,8 @@ void mouse_unpressed(SDL_Event& event)
             glm::ivec2 currentMouse = glm::ivec2(event.motion.x, -event.motion.y + HEIGHT);
             mousePositionX = currentMouse.x;
             mousePositionY = currentMouse.y;
+            std::cout <<  "Mouse Position X: " << mousePositionX << 
+                         " Mouse Position Y: " << mousePositionY << std::endl;
             modelData.bvo.isTracing = false;
             if (splitScreen)
             {
@@ -2458,18 +2530,18 @@ enum MaterialTextureType
 void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-    glGenTextures(1, &(framebuffer.texture));
-    glBindTexture(GL_TEXTURE_2D, framebuffer.texture);
+    glGenTextures(1, &(framebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.texture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
 }
 
 void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName)
 {
     shader.use();
-    glDeleteTextures(1, &(framebuffer.texture));
+    glDeleteTextures(1, &(framebuffer.textures[0]));
     int textureTypeInt = (int)materialTextureType;
     std::string textureType = "";
     unsigned int* materialType = {};
@@ -2849,14 +2921,8 @@ void main_loop()
     /** Start Decal Pass **/
     glEnable(GL_DEPTH_TEST);
 
-    if (!showTextureSpace)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
-    }
-    else
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
+    glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
+
     decalsPass.use();
     decalsPass.setMat4("model", modelData.modelMatrix);
     decalsPass.setMat4("projection", projection);
@@ -2876,16 +2942,9 @@ void main_loop()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.texture);
+    glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
 
-    if (!showTextureSpace)
-    {
-        glViewport(0, 0, geometryPass.Width, geometryPass.Height);
-    }
-    else
-    {
-        glViewport(0, 0, WIDTH, HEIGHT);
-    }
+    glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2900,13 +2959,56 @@ void main_loop()
         // Get the first position for ray picking.
         mousePositionX = WIDTH / 2;
         mousePositionY = HEIGHT / 2;
+        std::cout << "Uploading image!" << std::endl;
 #ifdef OPTIMIZE
 #else
         std::cout << "Uploading image!" << std::endl;
 #endif
     }
     /** End Decal Pass **/
-    if (!showTextureSpace)
+    if (showTextureSpace)
+    {
+        // Ping pong.
+        glBindFramebuffer(GL_FRAMEBUFFER, (frameIsEven ? jfaFrameBuffer[0].framebuffer : jfaFrameBuffer[1].framebuffer));
+        glBindVertexArray(quadVAO);
+        JFAPass.use();
+        JFAPass.setInt("iFrame", (int)frame);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
+
+        glViewport(0, 0, WIDTH, HEIGHT);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+
+        // Full screen quad.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(quadVAO);
+        fullScreenPass.use();
+        fullScreenPass.setVec2("iResolution", glm::vec2(geometryPass.Width, geometryPass.Height));
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[0].textures[0] : jfaFrameBuffer[1].textures[0]));// textureSpaceFramebuffer.textures[0]);
+
+        glViewport(0, 0, WIDTH, HEIGHT);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+       
+        /*glBindVertexArray(quadVAO);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);*/
+    }
+    else
     {
         /** Start Light Pass **/
         glScissor(0, 0, WIDTH / 2, HEIGHT);
@@ -2932,7 +3034,7 @@ void main_loop()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         // glActiveTexture(GL_TEXTURE2);
         // glBindTexture(GL_TEXTURE_2D, material.metallic);
         // glActiveTexture(GL_TEXTURE3);
@@ -3037,7 +3139,7 @@ void main_loop()
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
             // glActiveTexture(GL_TEXTURE2);
             // glBindTexture(GL_TEXTURE_2D, material.metallic);
             // glActiveTexture(GL_TEXTURE3);
@@ -3075,7 +3177,7 @@ void main_loop()
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.texture);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
             // glActiveTexture(GL_TEXTURE2);
             // glBindTexture(GL_TEXTURE_2D, material.metallic);
             // glActiveTexture(GL_TEXTURE3);
@@ -3108,4 +3210,5 @@ void main_loop()
     frame++;
     counter++;
     changeDecal = 0u;
+    frameIsEven = !frameIsEven;
 }

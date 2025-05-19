@@ -8,3 +8,5 @@
 	-To trigger, change model through the GUI.
 -Optimize it for the web
 -Implement JFA for proper alpha cutting
+-Pass shader string to include layout:
+	-We need this to be able to use RenderDoc to debug shaders.
