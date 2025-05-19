@@ -94,12 +94,12 @@ glm::vec3 camFront = glm::vec3( 0.0f, 0.0f, -1.0f );
 glm::vec3 camUp = glm::vec3( 0.0f, 1.0f, 0.0f );
 glm::vec3 differenceBboxMaxMin;
 
-//glm::mat4 model         = glm::mat4(1.0f);
-glm::mat4 view          = glm::mat4(1.0f);
-glm::mat4 projection    = glm::mat4(1.0f);
-glm::mat4 modelNoGuizmo = glm::mat4(1.0f);
-glm::mat4 viewPinned    = glm::mat4(1.0f);
-glm::vec2 widthHeight   = glm::vec2(WIDTH, HEIGHT);
+glm::mat4 view             = glm::mat4(1.0f);
+glm::mat4 projection       = glm::mat4(1.0f);
+glm::mat4 modelNoGuizmo    = glm::mat4(1.0f);
+glm::mat4 viewPinnedTop    = glm::mat4(1.0f);
+glm::mat4 viewPinnedBottom = glm::mat4(1.0f);
+glm::vec2 widthHeight      = glm::vec2(WIDTH, HEIGHT);
 glm::vec2 currentWindowWidthAndHeight = widthHeight;
 bool isActiveFPS = false;
 
@@ -134,6 +134,12 @@ struct CameraState
     float zoom = -10.0f;
     // position is the center on to which the camera rotates around.
     glm::vec2 position = { 0.0f, 0.0f };
+    // Same as zoom but for the side panels (the top and side views).
+    float zoomSide = 0.5f;
+    float zoomTop  = 0.5f;
+    // Positions to pan on side panels.
+    glm::vec2 positionTop = { 0.0f, 0.0f };
+    glm::vec2 positionBottom  = { 0.0f, 0.0f };
 };
 CameraState m_cameraState;
 
@@ -143,16 +149,26 @@ struct DragState {
     // Mouse wheel being pressed.
     bool mouseWheelButtonActive = false;
     uint mouseWheelButtonActiveSince = 0u;
+    // Drag action for the side panels.
+    bool activeTopPanel = false;
+    bool activeBottomPanel = false;
+    // Drag action for tracing with touch pad.
+    bool activeTouchPad = false;
     // The position of the mouse at the beginning of the drag action
     glm::vec2 startMouse;
     // The position of the mouse at the beginning of the mouse wheel button action.
     glm::vec2 mouseWheelActionStartMouse;
+    // The position of the mouse at the beginning of the right click on the top panel.
+    glm::vec2 mouseTopActionStartMouse;
+    // The position of the mouse at the beginning of the right click on the bottom panel.
+    glm::vec2 mouseBottomActionStartMouse;
     // The camera state at the beginning of the drag action
     CameraState startCameraState;
 
     // Constant settings
     float sensitivity = 0.01f;
     float scrollSensitivity = 1.0f;
+    float scrollSensitivityPanels = 0.1f;
 };
 DragState m_drag;
 /**
@@ -176,8 +192,6 @@ int scale = 1;
 float blend = 0.5f;
 float alphaCut = 0.1f;
 
-float zoomSide = 0.5f,
-        zoomTop  = zoomSide;
 /** End ImGui params. */
 
 unsigned int frame   = 0,
@@ -1505,6 +1519,8 @@ bool init()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1");
 #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
@@ -1806,7 +1822,6 @@ int main()
     /**
      * Start Window
      */
-
     if (!init())
     {
         return -1;
@@ -1940,13 +1955,15 @@ int main()
     {
         recomputeCamera();
         view = glm::lookAt(camPos, camPos + camFront, camUp);
-        viewPinned = view;
+        viewPinnedTop = view;
+        viewPinnedBottom = view;
     }
     else if (CAMERA == TRACK_BALL)
     {
         updateViewMatrix();
         recomputeCamera();
-        viewPinned = glm::lookAt(camPos, camPos + camFront, camUp);
+        viewPinnedTop = glm::lookAt(camPos, camPos + camFront, camUp);
+        viewPinnedBottom = viewPinnedTop;
     }
 
     std::cout << "Dec Width: " << +widthDecal << " Dec Height: "
@@ -1993,6 +2010,14 @@ void updateViewMatrix()
     view = translate * rotate;
 }
 
+void updateViewMatrixPanels(const glm::vec2& position, const float& zoom, glm::mat4& view)
+{
+    glm::mat4 translate = glm::mat4(1.0f);
+    glm::vec3 eye = modelData.Bbox.centroid - glm::vec3(position, zoom);
+    translate = glm::translate(translate, -eye);
+    view = translate;
+}
+
 void mouse_press(SDL_Event& event)
 {
     mouse = glm::vec3(event.motion.x, -event.motion.y + HEIGHT, 1.0f);
@@ -2023,16 +2048,77 @@ void mouse_press(SDL_Event& event)
             rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
                      /* In and Out */modelData, 
                      projection, view, false);
+            // Side panels.
+            if (splitScreen)
+            {
+                if (event.motion.x < (WIDTH / 2))
+                {
+                    /*m_drag.mouseWheelButtonActive = true;
+                    m_drag.mouseWheelActionStartMouse.x = mouse.x;
+                    m_drag.mouseWheelActionStartMouse.y = mouse.y;
+                    m_drag.startCameraState = m_cameraState;*/
+                }
+                else if (event.motion.y > (HEIGHT / 2))
+                {
+                    std::cout << "Bottom panel right click." << std::endl;
+                    m_drag.activeBottomPanel = true;
+                    m_drag.mouseBottomActionStartMouse.x = mouse.x;
+                    m_drag.mouseBottomActionStartMouse.y = mouse.y;
+                    m_drag.startCameraState = m_cameraState;
+                }
+                else
+                {
+                    m_drag.activeTopPanel = true;
+                    m_drag.mouseTopActionStartMouse.x = mouse.x;
+                    m_drag.mouseTopActionStartMouse.y = mouse.y;
+                    m_drag.startCameraState = m_cameraState;
+                }
+            }
+            else
+            {
+                /*m_drag.mouseWheelButtonActive = true;
+                m_drag.mouseWheelActionStartMouse.x = mouse.x;
+                m_drag.mouseWheelActionStartMouse.y = mouse.y;
+                m_drag.startCameraState = m_cameraState;*/
+            }
             break;
         }
         if (CAMERA == TRACK_BALL)
         {
             case SDL_BUTTON_MIDDLE:
             {
-                m_drag.mouseWheelButtonActive = true;
-                m_drag.mouseWheelActionStartMouse.x = mouse.x;
-                m_drag.mouseWheelActionStartMouse.y = mouse.y;
-                m_drag.startCameraState = m_cameraState;
+                // Side panels.
+                if (splitScreen)
+                {
+                    if (event.motion.x < (WIDTH / 2))
+                    {
+                        m_drag.mouseWheelButtonActive = true;
+                        m_drag.mouseWheelActionStartMouse.x = mouse.x;
+                        m_drag.mouseWheelActionStartMouse.y = mouse.y;
+                        m_drag.startCameraState = m_cameraState;
+                    }
+                    else if (event.motion.y > (HEIGHT / 2))
+                    {
+                        m_drag.activeBottomPanel = true;
+                        m_drag.mouseBottomActionStartMouse.x = mouse.x;
+                        m_drag.mouseBottomActionStartMouse.y = mouse.y;
+                        m_drag.startCameraState = m_cameraState;
+                    }
+                    else
+                    {
+                        m_drag.activeTopPanel = true;
+                        m_drag.mouseTopActionStartMouse.x = mouse.x;
+                        m_drag.mouseTopActionStartMouse.y = mouse.y;
+                        m_drag.startCameraState = m_cameraState;
+                    }
+                }
+                else
+                {
+                    m_drag.mouseWheelButtonActive = true;
+                    m_drag.mouseWheelActionStartMouse.x = mouse.x;
+                    m_drag.mouseWheelActionStartMouse.y = mouse.y;
+                    m_drag.startCameraState = m_cameraState;
+                }
                 break;
             }
         }
@@ -2065,13 +2151,50 @@ void mouse_unpressed(SDL_Event& event)
             mousePositionX = currentMouse.x;
             mousePositionY = currentMouse.y;
             modelData.bvo.isTracing = false;
+            if (splitScreen)
+            {
+                if (event.motion.x < (WIDTH / 2))
+                {
+                    //m_drag.mouseWheelButtonActive = false;
+                }
+                else if (event.motion.y > (HEIGHT / 2))
+                {
+                    m_drag.activeBottomPanel = false;
+                }
+                else
+                {
+                    m_drag.activeTopPanel = false;
+                }
+            }
+            else
+            {
+                //m_drag.mouseWheelButtonActive = false;
+            }
             break;
         }
         if (CAMERA == TRACK_BALL)
         {
             case SDL_BUTTON_MIDDLE:
             {
-                m_drag.mouseWheelButtonActive = false;
+                if (splitScreen)
+                {
+                    if (event.motion.x < (WIDTH / 2))
+                    {
+                        m_drag.mouseWheelButtonActive = false;
+                    }
+                    else if (event.motion.y > (HEIGHT / 2))
+                    {
+                        m_drag.activeBottomPanel = false;
+                    }
+                    else
+                    {
+                        m_drag.activeTopPanel = false;
+                    }
+                }
+                else
+                {
+                    m_drag.mouseWheelButtonActive = false;
+                }
                 break;
             }
         }
@@ -2128,9 +2251,37 @@ void mouse_motion(SDL_Event& event)
             updateViewMatrix();
         }
         // Pan.
-        if (m_drag.mouseWheelButtonActive)
+        if (splitScreen)
         {
-            glm::vec2 delta = (m_drag.mouseWheelActionStartMouse - 
+            if (m_drag.mouseWheelButtonActive)
+            {
+                glm::vec2 delta = (m_drag.mouseWheelActionStartMouse -
+                                   glm::vec2(currentMouse.x, currentMouse.y)) *
+                                   m_drag.sensitivity;
+                m_cameraState.position = m_drag.startCameraState.position + delta;
+                updateViewMatrix();
+            }
+            // Bottom Right panel
+            else if (m_drag.activeBottomPanel)
+            {
+                glm::vec2 delta = (m_drag.mouseBottomActionStartMouse -
+                                   glm::vec2(currentMouse.x, currentMouse.y)) *
+                                   m_drag.sensitivity;
+                m_cameraState.positionBottom = m_drag.startCameraState.positionBottom + delta;
+                updateViewMatrixPanels(m_cameraState.positionBottom, m_cameraState.zoomSide, viewPinnedBottom);
+            }
+            else if (m_drag.activeTopPanel)
+            {
+                glm::vec2 delta = (m_drag.mouseTopActionStartMouse -
+                                   glm::vec2(currentMouse.x, currentMouse.y)) *
+                                   m_drag.sensitivity;
+                m_cameraState.positionTop = m_drag.startCameraState.positionTop + delta;
+                updateViewMatrixPanels(m_cameraState.positionTop, m_cameraState.zoomTop, viewPinnedTop);
+            }
+        }
+        else if (m_drag.mouseWheelButtonActive)
+        {
+            glm::vec2 delta = (m_drag.mouseWheelActionStartMouse -
                                glm::vec2(currentMouse.x, currentMouse.y)) *
                                m_drag.sensitivity;
             m_cameraState.position = m_drag.startCameraState.position + delta;
@@ -2151,6 +2302,10 @@ void updateZoom(SDL_MouseWheelEvent* mouseWheel)
     m_cameraState.zoom += m_drag.scrollSensitivity * mouseWheel->preciseY;
     updateViewMatrix();
 }
+void updateZoomSidePanels(SDL_MouseWheelEvent* mouseWheel, float& zoom)
+{
+    zoom += m_drag.scrollSensitivityPanels * mouseWheel->preciseY;
+}
 
 void mouse_wheel(SDL_Event& event)
 {
@@ -2166,12 +2321,12 @@ void mouse_wheel(SDL_Event& event)
             }
             else if (mouseWheel->mouseY > (HEIGHT / 2))
             {
-                zoomSide = mouseWheel->preciseY + 1.0f;
+                updateZoomSidePanels(mouseWheel, m_cameraState.zoomSide);
                 std::cout << "Right Botton Screen: Mouse Wheel Precise Y: " << mouseWheel->preciseY << std::endl;
             }
             else
             {
-                zoomTop = mouseWheel->preciseY + 1.0f;
+                updateZoomSidePanels(mouseWheel, m_cameraState.zoomTop);
                 std::cout << "Right Top Screen Mouse: Wheel Precise Y: " << mouseWheel->preciseY << std::endl;
             }
         }
@@ -2274,20 +2429,21 @@ void key_up(SDL_Event& event)
 
 void multiple_touches(SDL_Event& event)
 {
-    SDL_MultiGestureEvent* m = (SDL_MultiGestureEvent*)&event;
-    if (m->numFingers == 2)
+    //SDL_MultiGestureEvent* m = (SDL_MultiGestureEvent*)&event;
+    if (event.mgesture.numFingers == 2)
     {
-        glm::ivec2 mouseDenormalize = glm::ivec2(glm::vec2(m->x, m->y) * glm::vec2(WIDTH, HEIGHT));
+        glm::ivec2 mouseDenormalize = glm::ivec2(glm::vec2(event.mgesture.x, event.mgesture.y) * glm::vec2(WIDTH, HEIGHT));
         mousePositionX = mouseDenormalize.x;
         mousePositionY = mouseDenormalize.y;
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
                  /* In and Out */modelData, 
                  projection, view, false);
-        m_drag.mouseWheelButtonActive = false;
+        m_drag.activeTouchPad = true;
+        /*m_drag.mouseWheelButtonActive = false;
         m_drag.mouseWheelButtonActiveSince = 0u;
-        isActiveFPS = false;
+        isActiveFPS = false;*/
     }
-    std::cout << "Number of fingers: " << m->numFingers << std::endl;
+    //std::cout << "Number of fingers: " << event.mgesture.numFingers << std::endl;
 }
 
 enum MaterialTextureType
@@ -2456,7 +2612,7 @@ void main_loop()
 
         if (!isInPerspectiveViewport)
         {
-            break;
+            //break;
         }
 
         switch (event.type)
@@ -2486,11 +2642,14 @@ void main_loop()
                 key_down(event);
                 break;
             }
+#ifdef __EMSCRIPTEN__
             case SDL_MULTIGESTURE:
             {
+                //std::cout << "Multi " << std::endl;
                 multiple_touches(event);
                 break;
             }
+#endif
             case SDL_WINDOWEVENT:
             {
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
@@ -2637,8 +2796,6 @@ void main_loop()
     {
         showHitPoint = !showHitPoint;
     }
-    ImGui::SliderFloat("Side Zoom", &zoomSide, 0.1f, 2.0f);
-    ImGui::SliderFloat("Front Zoom", &zoomTop, 0.1f, 2.0f);
     // If we have a GLTF we need to invert the texture coordinates.
     flipper = isGLTF ? 1 : 0;
     decalsPass.use();
@@ -2863,7 +3020,7 @@ void main_loop()
             glViewport(WIDTH / 2, 0, WIDTH / 2, HEIGHT / 2);
 
             // Scale for the side view.
-            glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(zoomSide, zoomSide, zoomSide));
+            glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomSide, m_cameraState.zoomSide, m_cameraState.zoomSide));
             modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
             //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
 
@@ -2872,7 +3029,7 @@ void main_loop()
             deferredPass.use();
             deferredPass.setMat4("model", modelSide);
             deferredPass.setMat4("projection", projectionSide);
-            deferredPass.setMat4("view", viewPinned);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000,
+            deferredPass.setMat4("view", viewPinnedBottom);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000,
                                                     0.000000, 0.981959, 0.189095, 0.000000,
                                                     -0.993572, 0.021407, -0.111162, 0.000000,
                                                     -0.064962, 0.388481, -4.221102, 1.000000));*/
@@ -2890,7 +3047,7 @@ void main_loop()
             deferredPass.setVec3("lightPos", light.position);
             deferredPass.setFloat("iTime", iTime);
             deferredPass.setInt("iFlipper", flipper);
-            deferredPass.setInt("iNormals", 0);//enableNormals);
+            deferredPass.setInt("iNormals", enableNormals);
             deferredPass.setFloat("iTime", iTime);
 
             glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
@@ -2902,7 +3059,7 @@ void main_loop()
             glViewport(WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
 
             // Scale for the side view.
-            glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(zoomTop, zoomTop, zoomTop));
+            glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomTop, m_cameraState.zoomTop, m_cameraState.zoomTop));
             //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2910,7 +3067,7 @@ void main_loop()
             deferredPass.use();
             deferredPass.setMat4("model", modelTop);
             deferredPass.setMat4("projection", projectionSide);
-            deferredPass.setMat4("view", viewPinned);/*glm::mat4(1.0, 0.0,  0.0, 0.0,
+            deferredPass.setMat4("view", viewPinnedTop);/*glm::mat4(1.0, 0.0,  0.0, 0.0,
                                                     0.0, 1.0,  0.0, 0.0,
                                                     0.0, 0.0,  1.0, 0.0,
                                                     0.0, 0.0, -1.0, 1.0));*/
@@ -2928,7 +3085,7 @@ void main_loop()
             deferredPass.setVec3("lightPos", light.position);
             deferredPass.setFloat("iTime", iTime);
             deferredPass.setInt("iFlipper", flipper);
-            deferredPass.setInt("iNormals", 0);//enableNormals);
+            deferredPass.setInt("iNormals", enableNormals);
             deferredPass.setFloat("iTime", iTime);
 
             glDrawElements(GL_TRIANGLES, modelData.indexes.size(), GL_UNSIGNED_INT, 0);
