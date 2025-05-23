@@ -221,7 +221,116 @@ public:
 		glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
 	}
 
-	void createTexture(unsigned int* texture, std::string fileName, std::string samplerName,
+    enum TEXTURE_WRAP_PARAMS
+    {
+        REPEAT,
+        CLAMP_TO_EDGE,
+        CLAMP_TO_BORDER
+    };
+    
+    enum TEXTURE_SAMPLE_PARAMS
+    {
+        LINEAR,
+        LINEAR_MIPS,
+        NEAREST,
+        NEAREST_MIPS
+    };
+    
+    /**
+     * @brief This function calls the apropiate methods for different wrapping options.
+     *
+     * To be able to call it you must pass an enum TEXTURE_WRAP_PARAMS that defines the wrapping parameters.
+     * 0 = repeat
+     * 1 = clamp to edge
+     * 2 = camp to border
+     *
+     * @param wrapParam This parameter controls the wrapping.
+     * @return Returns void, so no result.
+     */
+    void textureWrap(const TEXTURE_WRAP_PARAMS& wrapParam)
+    {
+        GLint textureWrap;
+        switch (wrapParam)
+        {
+            case 0:
+            {
+                textureWrap = GL_REPEAT;
+                break;
+            }
+            case 1:
+            {
+                textureWrap = GL_CLAMP_TO_EDGE;
+                break;
+            }
+            case 2:
+            {
+                textureWrap = GL_CLAMP_TO_BORDER;
+                break;
+            }
+            default:
+            {
+                textureWrap = GL_REPEAT;
+                break;
+            }
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, textureWrap);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, textureWrap);
+    }
+    
+    /**
+     * @brief This function calls the apropiate methods for different sampling options.
+     *
+     * To be able to call it you must pass an enum TEXTURE_SAMPLE_PARAMS that defines the sampling parameters.
+     * 0 = linear
+     * 1 = linear with mip maps
+     * 2 = nearest
+     * 3 = nearest with mip maps
+     *
+     * @param sampleParam This parameter controls the sampling.
+     * @return Returns void, so no result.
+     */
+    void textureSample(const TEXTURE_SAMPLE_PARAMS& sampleParam)
+    {
+        GLint textureSampleMin;
+        GLint textureSampleMag;
+        switch (sampleParam)
+        {
+            case 0:
+            {
+                textureSampleMin = GL_LINEAR;
+                textureSampleMag = GL_LINEAR;
+                break;
+            }
+            case 1:
+            {
+                textureSampleMin = GL_LINEAR;
+                textureSampleMag = GL_LINEAR_MIPMAP_LINEAR;
+                break;
+            }
+            case 2:
+            {
+                textureSampleMin = GL_NEAREST;
+                textureSampleMag = GL_NEAREST;
+                break;
+            }
+            case 3:
+            {
+                textureSampleMin = GL_NEAREST;
+                textureSampleMag = GL_NEAREST_MIPMAP_LINEAR;
+                break;
+            }
+            default:
+            {
+                textureSampleMin = GL_LINEAR;
+                textureSampleMag = GL_LINEAR;
+                break;
+            }
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureSampleMin);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureSampleMag);
+    }
+    
+	void createTexture(unsigned int* texture, std::string fileName, const TEXTURE_WRAP_PARAMS& wrapParam, const TEXTURE_SAMPLE_PARAMS& sampleParam, std::string samplerName,
 		int uniform
 	)
 	{
@@ -230,11 +339,9 @@ public:
 
 		// In an ideal world this should be exposed as input params to the function.
 		// Texture wrapping params.
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        textureWrap(wrapParam);
 		// Texture filtering params.
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        textureSample(sampleParam);
 
 		// Load image, texture creating and generation of mipmaps.
 		int width, height, channels;
