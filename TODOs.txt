@@ -10,3 +10,5 @@
 -Implement JFA for proper alpha cutting
 -Pass shader string to include layout:
 	-We need this to be able to use RenderDoc to debug shaders.
+-Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
+-Fix the depthBias 

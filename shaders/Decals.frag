@@ -14,10 +14,12 @@ uniform vec2 iResolution;
 uniform sampler2D iChannel0;
 uniform sampler2D iChannel1;
 uniform sampler2D iDepth;
+uniform sampler2D iSDF;
 uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
-uniform float iAlphaCut;
+//uniform float iAlphaCut;
+uniform float iSmoothness;
 
 uniform float bias;
 
@@ -61,11 +63,13 @@ void main()
 
     vec4 projectedDecal = texture(iChannel0, decalUV.xy);
     vec4 albedoMap      = texture(iChannel1, texCoords);
+    float sdf           = texture(iSDF,      decalUV.xy).r;
 
-    if (projectedDecal.a < (1.0 - iAlphaCut))
+    /*if (projectedDecal.a < (1.0 - iAlphaCut))
     {
         projectedDecal.rgb = albedoMap.rgb;
-    }
+    }*/
+    projectedDecal.rgb = mix( albedoMap.rgb, projectedDecal.rgb, smoothstep( 0., iSmoothness, sdf ) );
 
     float minDecalsUV = (max(decalUV.x, decalUV.y), decalUV.z);
 

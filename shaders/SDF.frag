@@ -15,9 +15,8 @@ uniform float iDistanceWidth;
 
 void main()
 {
-    vec2 adjustedFragCoord = floor( TexCoords * iResolution ) + .5;//TexCoords;//(-iResolution + 2.0 * gl_FragCoord.xy) / iResolution.y;
-    
-    vec2 uv = adjustedFragCoord / iResolution;//( floor( uv * iResolution ) + .5 );
+    vec2 adjustedFragCoord = ( TexCoords * iResolution ) + .5;
+    vec2 uv = adjustedFragCoord / iResolution;
     
     vec4 jfa = texture( iChannel0, uv );
     
