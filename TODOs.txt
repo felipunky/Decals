@@ -1,4 +1,4 @@
--Add touch events
+-SEMI-DONE: Add touch events
 -Parallax Occlusion Mapping
 -Refactor the decal upload
 -Play with the smoothstep for the Decal's SDF
@@ -7,8 +7,11 @@
 -Fix broken download of Decal on WASM:
 	-To trigger, change model through the GUI.
 -Optimize it for the web
--Implement JFA for proper alpha cutting
+-DONE: Implement JFA for proper alpha cutting
 -Pass shader string to include layout:
 	-We need this to be able to use RenderDoc to debug shaders.
--Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
--Fix the depthBias 
+-DONE: Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
+-DONE: Fix the depthBias 
+-Add proper scale for the JFA input/decal texture
+-Add shadows look into CSM or simple Shadow Mapping
+-Get the newly implemented JFA to compile on WASM

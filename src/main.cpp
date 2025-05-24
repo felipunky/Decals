@@ -38,8 +38,8 @@
 #define RADIANS_30 glm::radians(30.0f)
 #define RADIANS_45 glm::radians(45.0f)
 
-int WIDTH  = 1024,
-    HEIGHT = 1024;
+int WIDTH  = 800,
+    HEIGHT = 600;
 int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
                 quarterHeight = halfHeight / 2;
 const int JFA_FACTOR = 4;
@@ -196,12 +196,14 @@ bool showProjector = !false;
 bool showHitPoint  = !false;
 bool normalMap     = !false;
 bool splitScreen   = false;
+bool alphaJFA      = true;
 
 int scale = 1;
 float blend = 0.5f;
 float alphaCut = 0.1f;
 float smoothAlpha = 0.5f;
 int distanceWidthJFA = 8;
+int fullScreenPassRepeat = 2;
 
 /** End ImGui params. */
 
@@ -700,7 +702,7 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
 
         glm::vec4 axis                = rotate * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
         glm::mat4 projectorView       = glm::lookAt(projectorPos, modelData.bvo.hitPos, axis.xyz());
-        glm::mat4 projectorProjection = glm::ortho(-projectorSize, projectorSize, -proportionateHeight, proportionateHeight, 0.001f, FAR_PLANE);
+        glm::mat4 projectorProjection = glm::ortho(-projectorSize, projectorSize, -proportionateHeight, proportionateHeight, 1e-5f, FAR_PLANE);
 
         modelData.bvo.decalProjector = projectorProjection * projectorView;
         if (debug)
@@ -1461,7 +1463,7 @@ void recomputeCamera()
     #endif
 }
 
-float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.0005)
+float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.00025)
 {
     return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
 }
@@ -1472,7 +1474,7 @@ void reloadModel(ModelData& modelData)
     CreateBOs(modelData);
     float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
-    std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
+    //std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
 }
 
 void recomputeDecalBaseColorTexture()
@@ -1489,8 +1491,8 @@ void recomputeDecalBaseColorTexture()
 
     // In an ideal world this should be exposed as input params to the function.
     // Texture wrapping params.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1704,7 +1706,7 @@ void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -1775,8 +1777,8 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
     glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     // Texture wrapping params.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1811,8 +1813,8 @@ void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& size
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
     // Texture wrapping params.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1912,8 +1914,8 @@ int main()
     fileNames[0].decalBaseColor = "Assets/Textures/Watchmen.png";
 
     fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
-    fileNames[1].baseColor = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpeg";
-    fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpeg";
+    fileNames[1].baseColor = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
+    fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "Assets/Textures/Watchmen.png";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
@@ -1922,8 +1924,8 @@ int main()
     fileNames[0].decalBaseColor = "../Assets/Textures/Watchmen.png";
 
     fileNames[1].mesh = "../Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
-    fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpeg";
-    fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpeg";
+    fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
+    fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "../Assets/Textures/Watchmen_2.png";
     /*fileNames[2].mesh = "../Assets/RV/source/RV.glb";
     fileNames[2].baseColor = "../Assets/RV/textures/clay_baseColor.png";
@@ -2677,7 +2679,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     }
     glDeleteTextures(1, materialType);
     // Make decal recreation prettier some time in the future.
-    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::REPEAT;
+    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
     shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt);
     
@@ -2963,6 +2965,7 @@ void main_loop()
     {
         showTextureSpace = !showTextureSpace;
     }
+    ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
     if (ImGui::Button("Enable Normal Map"))
     {
         normalMap = !normalMap;
@@ -2973,6 +2976,11 @@ void main_loop()
     }
     ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
     ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
+    if (ImGui::Button("Use Alpha for Decal"))
+    {
+        alphaJFA = !alphaJFA;
+        frameJFA = 0u;
+    }
     if (ImGui::SliderFloat("Alpha Cut", &alphaCut, 0.0f, 1.0f))
     {
         frameJFA = 0u;
@@ -3045,7 +3053,7 @@ void main_loop()
 
     depthPrePass.use();
     glBindVertexArray(modelData.openGLObject.VAO);
-    depthPrePass.setMat4("decalProjector", modelData.bvo.decalProjector);
+    depthPrePass.setMat4("decalProjector", /*projection * view * modelData.modelMatrix);//*/modelData.bvo.decalProjector);
     glViewport(0, 0, WIDTH / 4, HEIGHT / 4);
 
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -3056,91 +3064,70 @@ void main_loop()
     float flipFloat = (float)flip;
     float flipAlbedoFloat = (float)flipAlbedo;
 
-    /** Start Jump Flooding Algorithm **/
-    // JFA
-    // Ping pong.
-    glBindFramebuffer(GL_FRAMEBUFFER, (frameIsEven ? jfaFrameBuffer[0].framebuffer : jfaFrameBuffer[1].framebuffer));
-    glBindVertexArray(quadVAO);
-    JFAPass.use();
-    JFAPass.setInt("iFrame", (int)frameJFA);
-    JFAPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
-    JFAPass.setFloat("iAlphaCut", alphaCut);
-    float maxSteps = std::floor(std::log2(std::max(widthHeightJFA.z, widthHeightJFA.w)));
-    //std::cout << "Max steps: " << maxSteps << std::endl;
-    JFAPass.setFloat("iMaxSteps", maxSteps);
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::REPEAT;
-    JFAPass.textureWrap(textureWrapParams);
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::NEAREST;
-    JFAPass.textureSample(textureSampleParams);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
-    textureWrapParams = Shader::CLAMP_TO_EDGE;
-    JFAPass.textureWrap(textureWrapParams);
-    textureSampleParams = Shader::LINEAR_MIPS;
-    JFAPass.textureSample(textureSampleParams);
-    
-    glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-    
-    // Reconstruct SDF
-    glBindFramebuffer(GL_FRAMEBUFFER, sdfFramebuffer.framebuffer);
-    glBindVertexArray(quadVAO);
-    SDFPass.use();
-    //SDFPass.setInt("iFrame", (int)frame);
-    SDFPass.setInt("iChannel0", 0);
-    SDFPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
-    SDFPass.setFloat("iDistanceWidth", (float)distanceWidthJFA);
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[0].textures[0] : jfaFrameBuffer[1].textures[0]));
-    textureWrapParams = Shader::REPEAT;
-    SDFPass.textureWrap(textureWrapParams);
-    textureSampleParams = Shader::NEAREST;
-    SDFPass.textureSample(textureSampleParams);
-    //glActiveTexture(GL_TEXTURE1);
-    //glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
-    
-    glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-    
-    // Full screen quad.
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(quadVAO);
-    fullScreenPass.use();
-    fullScreenPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
-    fullScreenPass.setFloat("iSmoothness", smoothAlpha * 0.5);
-    //fullScreenPass.setFloat("iDistanceWidth", (float)distanceWidthJFA);
-    
-    textureWrapParams = Shader::REPEAT;
-    textureSampleParams = Shader::LINEAR;
-    fullScreenPass.textureSample(textureSampleParams);
-    
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
-    //glActiveTexture(GL_TEXTURE0);
-    //glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[0].textures[0] : jfaFrameBuffer[1].textures[0]));// textureSpaceFramebuffer.textures[0]);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
-    fullScreenPass.setInt("iChannel1", 1);
-    
-    glViewport(0, 0, widthHeightJFA.x, widthHeightJFA.y);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-    /** End Jump Flooding Algorithm **/
+    if (alphaJFA)
+    {
+        /** Start Jump Flooding Algorithm **/
+        // JFA
+        // Ping pong.
+        glBindFramebuffer(GL_FRAMEBUFFER, (frameIsEven ? jfaFrameBuffer[0].framebuffer : jfaFrameBuffer[1].framebuffer));
+        glBindVertexArray(quadVAO);
+        JFAPass.use();
+        JFAPass.setInt("iFrame", (int)frameJFA);
+        JFAPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
+        JFAPass.setFloat("iAlphaCut", alphaCut);
+        float maxSteps = std::floor(std::log2(std::max(widthHeightJFA.z, widthHeightJFA.w)));
+        //std::cout << "Max steps: " << maxSteps << std::endl;
+        JFAPass.setFloat("iMaxSteps", maxSteps);
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
+        textureWrapParams = Shader::REPEAT;
+        JFAPass.textureWrap(textureWrapParams);
+        textureSampleParams = Shader::NEAREST;
+        JFAPass.textureSample(textureSampleParams);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+        textureWrapParams = Shader::CLAMP_TO_EDGE;
+        JFAPass.textureWrap(textureWrapParams);
+        textureSampleParams = Shader::LINEAR_MIPS;
+        JFAPass.textureSample(textureSampleParams);
+        
+        glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+        
+        // Reconstruct SDF
+        glBindFramebuffer(GL_FRAMEBUFFER, sdfFramebuffer.framebuffer);
+        glBindVertexArray(quadVAO);
+        SDFPass.use();
+        //SDFPass.setInt("iFrame", (int)frame);
+        SDFPass.setInt("iChannel0", 0);
+        SDFPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
+        SDFPass.setFloat("iDistanceWidth", (float)distanceWidthJFA);
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[0].textures[0] : jfaFrameBuffer[1].textures[0]));
+        textureWrapParams = Shader::REPEAT;
+        SDFPass.textureWrap(textureWrapParams);
+        textureSampleParams = Shader::NEAREST;
+        SDFPass.textureSample(textureSampleParams);
+        //glActiveTexture(GL_TEXTURE1);
+        //glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+        
+        glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+        
+        /** End Jump Flooding Algorithm **/
+    }
 
     /** Start Decal Pass **/
     glEnable(GL_DEPTH_TEST);
@@ -3158,6 +3145,7 @@ void main_loop()
     decalsPass.setFloat("iSmoothness", smoothAlpha * 0.5);
     decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
     decalsPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+    decalsPass.setBool("iAlpha", alphaJFA);
 
     glBindVertexArray(modelData.openGLObject.VAO);
 
@@ -3165,11 +3153,18 @@ void main_loop()
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+    textureSampleParams = Shader::LINEAR;
+    decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
-
+    textureSampleParams = Shader::LINEAR;
+    decalsPass.textureSample(textureSampleParams);
+    if (alphaJFA)
+    {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
+    }
+        
     glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -3197,10 +3192,12 @@ void main_loop()
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(quadVAO);
         fullScreenPass.use();
-        fullScreenPass.setVec2("iResolution", glm::vec2(decalsPass.Width, decalsPass.Height));
+        fullScreenPass.setVec2("iResolution", glm::vec2(geometryPass.Width, geometryPass.Height));
          
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+        
+        fullScreenPass.setInt("iScale", fullScreenPassRepeat);
          
         glViewport(0, 0, WIDTH, HEIGHT);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3232,6 +3229,8 @@ void main_loop()
         deferredPass.setMat4("projection", projectionHalf);
         deferredPass.setMat4("view", view);
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+        textureSampleParams = Shader::LINEAR;
+        deferredPass.textureWrap(textureWrapParams);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         glActiveTexture(GL_TEXTURE1);

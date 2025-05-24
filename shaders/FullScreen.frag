@@ -7,6 +7,8 @@ out vec4 FragColor;
 
 uniform vec2 iResolution;
 uniform sampler2D iChannel0;
+uniform int iScale;
+//uniform sampler2D iChannel1;
 
 //uniform float iDistanceWidth;
 
@@ -14,6 +16,13 @@ uniform sampler2D iChannel0;
 
 void main()
 {
-    vec2 uv = gl_FragCoord.xy * 2.0 / iResolution;
-    FragColor = texture( iChannel0, uv );
+    vec2 uv = gl_FragCoord.xy * float( iScale ) / iResolution;
+    if ( uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 )
+    {
+        FragColor *= 0.;
+    }
+    else
+    {
+        FragColor = texture( iChannel0, uv );
+    }
 }

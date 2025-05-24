@@ -264,7 +264,11 @@ public:
             }
             case 2:
             {
+#ifdef __EMSCRIPTEN__
+				std::cout << "Not supported!" << std::endl;
+#else
                 textureWrap = GL_CLAMP_TO_BORDER;
+#endif
                 break;
             }
             default:

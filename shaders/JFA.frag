@@ -11,15 +11,11 @@ uniform int iFrame;
 uniform vec2 iResolution;
 uniform float iAlphaCut;
 uniform float iMaxSteps;
-vec2 iResolutionReciprocal = 1. / iResolution;
-
-// how many JFA steps to do.  2^c_maxSteps is max image size on x and y
-const float c_maxSteps = 10.0;
 
 vec4 StepJFA (in vec2 fragCoord, in float level)
 {
     level = clamp(level, 0.0, iMaxSteps);
-    vec2 stepwidth = vec2( floor( exp2( c_maxSteps - level ) + 0.5 ) );
+    vec2 stepwidth = vec2( floor( exp2( iMaxSteps - level ) + 0.5 ) );
     
     float bestDistance = 9999.0;
     vec2 bestCoord = vec2(0.0);
@@ -29,7 +25,7 @@ vec4 StepJFA (in vec2 fragCoord, in float level)
     
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
-            vec2 sampleCoord = ( fragCoord + ( vec2( x, y ) * stepwidth ) ) * iResolutionReciprocal;
+            vec2 sampleCoord = ( fragCoord + ( vec2( x, y ) * stepwidth ) ) / iResolution;
             
             vec4 data = texture( iChannel0, sampleCoord );
             
