@@ -43,6 +43,7 @@ int WIDTH  = 800,
 int halfWidth = WIDTH / 2, halfHeight = HEIGHT / 2,
                 quarterHeight = halfHeight / 2;
 const int JFA_FACTOR = 4;
+const int DEPTH_FACTOR = 4;
 
 const float SPEED = 5.0f;
 // How much time between frames.
@@ -69,7 +70,6 @@ uint16_t widthDecal  = 1024u,
          changeAlbedo = 0u;
 int flip = 0;
 bool flipDecal = false;
-bool showTextureSpace = false;
 Shader depthPrePass   = Shader(),
        geometryPass   = Shader(),
        deferredPass   = Shader(),
@@ -204,6 +204,14 @@ float alphaCut = 0.1f;
 float smoothAlpha = 0.5f;
 int distanceWidthJFA = 8;
 int fullScreenPassRepeat = 2;
+
+enum SHOW_TEXTURES
+{
+    CURRENT_MODEL,
+    TEXTURE_SPACE,
+    JFA
+};
+SHOW_TEXTURES showTextures = CURRENT_MODEL;
 
 /** End ImGui params. */
 
@@ -1703,7 +1711,7 @@ void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
     glGenTextures(1, &(depthFramebuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH/4, HEIGHT/4, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -1715,7 +1723,7 @@ void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthFramebuffer.textures[0], 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) 
     {
-        std::cerr << "Framebuffer configuration failed" << std::endl;
+        std::cerr << "Depth Framebuffer configuration failed" << std::endl;
     }
 
     unsigned int attachments[1] = {GL_NONE};
@@ -1751,7 +1759,7 @@ void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
     glDrawBuffers(1, drawBuffersFBO); // "1" is the size of DrawBuffers
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
+        std::cout << "Texture Space Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     deferredPass.use();
@@ -1775,7 +1783,11 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
     frameBuffer.textures = std::vector<unsigned int>(1);
     glGenTextures(1, &(frameBuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
+#ifdef __EMSCRIPTEN__
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#else
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#endif
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1789,8 +1801,11 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
     unsigned int drawBuffersFBO[1] = { GL_COLOR_ATTACHMENT0 };
     glDrawBuffers(1, drawBuffersFBO);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
+    int frameBufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (frameBufferStatus != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "JFA Framebuffer not complete! Code:" << frameBufferStatus << std::endl;
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     std::cout << "JFA Frame buffer: framebuffer: " << frameBuffer.framebuffer << " texture: " << frameBuffer.textures[0] << std::endl;
@@ -1810,7 +1825,11 @@ void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& size
     frameBuffer.textures = std::vector<unsigned int>(1);
     glGenTextures(1, &(frameBuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
+#ifdef __EMSCRIPTEN__
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#else
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+#endif
 
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1825,8 +1844,11 @@ void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& size
     unsigned int drawBuffersFBO[1] = { GL_COLOR_ATTACHMENT0 };
     glDrawBuffers(1, drawBuffersFBO);
     
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
+    int frameBufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (frameBufferStatus != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "SDF Framebuffer not complete! Code:" << frameBufferStatus << std::endl;
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     std::cout << "SDF Frame buffer: framebuffer: " << frameBuffer.framebuffer << " texture: " << frameBuffer.textures[0] << std::endl;
@@ -2061,6 +2083,7 @@ int main()
      */
     fullScreenPass.use();
     fullScreenPass.setInt("iChannel0", 0);
+    fullScreenPass.setInt("iChannel1", 1);
     renderQuad();
     /**
      * End Full Screen Quad
@@ -2603,6 +2626,9 @@ enum MaterialTextureType
 
 void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
 {
+    //shader.use();
+    //glDeleteTextures(1, &(framebuffer.textures[0]));
+    
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
     glGenTextures(1, &(framebuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
@@ -2612,9 +2638,27 @@ void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
 }
 
-void regenerateFramebufferTextureJFA(const Shader& shader, const glm::ivec2& widthHeight, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
+void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
 {
-    shader.use();
+    glDeleteTextures(1, &(framebuffer.textures[0]));
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    
+    glGenTextures(1, &(framebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+    
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, framebuffer.textures[0], 0);
+}
+
+void regenerateFramebufferTextureJFA(const glm::ivec2& widthHeight, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
+{
     glDeleteTextures(1, &(framebuffer.textures[0]));
     
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
@@ -2823,6 +2867,8 @@ void main_loop()
                 {
                     WIDTH = event.window.data1;
                     HEIGHT = event.window.data2;
+                    depthPrePass.use();
+                    regenerateDepthFramebufferTexture(depthFramebuffer);
                 }
                 break;
             }
@@ -2860,6 +2906,39 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
+    static const char* textureTypes[]{ "Model", "Texture Space", "JFA" };
+    static const char* selectedTexture = textureTypes[0];
+    bool textureSelectionDirty = ImGui::BeginCombo("Display", selectedTexture, 0);
+    //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
+    if (textureSelectionDirty)
+    {
+        for (int n = 0; n < IM_ARRAYSIZE(textureTypes); n++)
+        {
+            bool is_selected = (selectedTexture == textureTypes[n]);
+            if (ImGui::Selectable(textureTypes[n], is_selected))
+            {
+                selectedTexture = textureTypes[n];
+            }
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+            }
+        }
+        ImGui::EndCombo();
+        //std::cout << "CAMERA: " << CAMERA << std::endl;
+        if (strcmp(selectedTexture, "Model") == 0)
+        {
+            showTextures = CURRENT_MODEL;
+        }
+        else if (strcmp(selectedTexture, "Texture Space") == 0)
+        {
+            showTextures = TEXTURE_SPACE;
+        }
+        else
+        {
+            showTextures = JFA;
+        }
+    }
     static const char* cameraTypes[]{ "FPS", "Trackball" };
     static const char* selectedItem = cameraTypes[1];
     bool cameraSelectionDirty = ImGui::BeginCombo("Camera", selectedItem, 0);
@@ -2915,15 +2994,23 @@ void main_loop()
             
             frameJFA = 0;
             FrameBufferTextureParams frameBufferTextureParams;
+#ifdef __EMSCRIPTEN__
+            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
+#else
             frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
+#endif
             frameBufferTextureParams.FORMAT = GL_RGBA;
             for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
             {
-                regenerateFramebufferTextureJFA(JFAPass, glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
+                regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
             }
+#ifdef __EMSCRIPTEN__
+            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
+#else
             frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
+#endif
             frameBufferTextureParams.FORMAT = GL_RGBA;
-            regenerateFramebufferTextureJFA(SDFPass, glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
+            regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
             
             //JFAPass.setVec2("iResolution", glm::vec2(decalsPass.Width, decalsPass.Height));
             //SDFPass.setVec2("iResolution", glm::vec2(decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR));
@@ -2941,15 +3028,23 @@ void main_loop()
             
             frameJFA = 0;
             FrameBufferTextureParams frameBufferTextureParams;
+#ifdef __EMSCRIPTEN
+            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
+#else
             frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
+#endif
             frameBufferTextureParams.FORMAT = GL_RGBA;
             for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
             {
-                regenerateFramebufferTextureJFA(JFAPass, glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
+                regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
             }
+#ifdef __EMSCRIPTEN
+            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
+#else
             frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
+#endif
             frameBufferTextureParams.FORMAT = GL_RGBA;
-            regenerateFramebufferTextureJFA(SDFPass, glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
+            regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
             
             //JFAPass.setVec2("iResolution", glm::vec2(decalsPass.Width, decalsPass.Height));
             //SDFPass.setVec2("iResolution", glm::vec2(decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR));
@@ -2960,10 +3055,6 @@ void main_loop()
     if (ImGui::Button("Split Screen"))
     {
         splitScreen = !splitScreen;
-    }
-    if (ImGui::Button("Show Texture Space"))
-    {
-        showTextureSpace = !showTextureSpace;
     }
     ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
     if (ImGui::Button("Enable Normal Map"))
@@ -3046,6 +3137,7 @@ void main_loop()
     // render
     // ------
     /** Start Depth Pre-Pass **/
+    
     glEnable(GL_DEPTH_TEST);
     glDepthMask(true);
     glCullFace(GL_BACK);
@@ -3054,7 +3146,7 @@ void main_loop()
     depthPrePass.use();
     glBindVertexArray(modelData.openGLObject.VAO);
     depthPrePass.setMat4("decalProjector", /*projection * view * modelData.modelMatrix);//*/modelData.bvo.decalProjector);
-    glViewport(0, 0, WIDTH / 4, HEIGHT / 4);
+    glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);
 
     glClear(GL_DEPTH_BUFFER_BIT);
     glDrawElements(GL_TRIANGLES, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
@@ -3149,16 +3241,18 @@ void main_loop()
 
     glBindVertexArray(modelData.openGLObject.VAO);
 
+    textureSampleParams = Shader::LINEAR_MIPS;
+    decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
-    textureSampleParams = Shader::LINEAR;
+    textureSampleParams = Shader::NEAREST;
     decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
-    textureSampleParams = Shader::LINEAR;
-    decalsPass.textureSample(textureSampleParams);
+    //textureSampleParams = Shader::LINEAR;
+    //decalsPass.textureSample(textureSampleParams);
     if (alphaJFA)
     {
         glActiveTexture(GL_TEXTURE3);
@@ -3187,17 +3281,38 @@ void main_loop()
 #endif
     }
     /** End Decal Pass **/
-    if (showTextureSpace)
+    if (showTextures == TEXTURE_SPACE || showTextures == JFA)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(quadVAO);
         fullScreenPass.use();
-        fullScreenPass.setVec2("iResolution", glm::vec2(geometryPass.Width, geometryPass.Height));
-         
+        glm::vec2 fullScreenPassResolution = glm::vec2(1.0f, 1.0f);
+        bool drawJFA = alphaJFA && showTextures == JFA;
+        if (drawJFA)
+        {
+            fullScreenPassResolution = glm::vec2(decalsPass.Width, decalsPass.Height);
+        }
+        else
+        {
+            fullScreenPassResolution = glm::vec2(geometryPass.Width, geometryPass.Height);
+        }
+        fullScreenPass.setVec2("iResolution", fullScreenPassResolution);
+        
+        textureSampleParams = Shader::NEAREST;
+        fullScreenPass.textureSample(textureSampleParams);
+        
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+        if (alphaJFA)
+        {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
+        }
         
         fullScreenPass.setInt("iScale", fullScreenPassRepeat);
+        
+        fullScreenPass.setBool("iAlpha", drawJFA);
+        fullScreenPass.setFloat("iSmoothness", smoothAlpha * 0.5);
          
         glViewport(0, 0, WIDTH, HEIGHT);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3229,10 +3344,12 @@ void main_loop()
         deferredPass.setMat4("projection", projectionHalf);
         deferredPass.setMat4("view", view);
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-        textureSampleParams = Shader::LINEAR;
-        deferredPass.textureWrap(textureWrapParams);
+        textureSampleParams = Shader::LINEAR_MIPS;
+        deferredPass.textureSample(textureSampleParams);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+        textureSampleParams = Shader::NEAREST;
+        deferredPass.textureSample(textureSampleParams);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         // glActiveTexture(GL_TEXTURE2);

@@ -1,17 +1,31 @@
--SEMI-DONE: Add touch events
--Parallax Occlusion Mapping
--Refactor the decal upload
--Play with the smoothstep for the Decal's SDF
--Fix broken decal, to trigger:
-	-Upload a decal, change model
--Fix broken download of Decal on WASM:
-	-To trigger, change model through the GUI.
--Optimize it for the web
--DONE: Implement JFA for proper alpha cutting
--Pass shader string to include layout:
-	-We need this to be able to use RenderDoc to debug shaders.
--DONE: Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
--DONE: Fix the depthBias 
--Add proper scale for the JFA input/decal texture
--Add shadows look into CSM or simple Shadow Mapping
--Get the newly implemented JFA to compile on WASM
+TODOs:
+	-Parallax Occlusion Mapping
+	-Refactor the decal upload
+	-Play with the smoothstep for the Decal's SDF
+	-Fix broken decal, to trigger:
+		-Upload a decal, change model
+	-Fix broken download of Decal on WASM:
+		-To trigger, change model through the GUI.
+	-Optimize it for the web
+	-Pass shader string to include layout:
+		-We need this to be able to use RenderDoc to debug shaders.
+	-Add proper scale params for the JFA input/decal texture
+	-Add shadows look into CSM or simple Shadow Mapping
+	-Get the newly implemented JFA to compile on WASM
+	-Fix weird ram leaks
+	-Add file uploading from drag and drop
+	-Add touch events
+	-Add noise so that we can blend with the background more naturally, see:
+		-https://superhivemarket.com/products/quick-decals
+	-Get the texture sampling/wrapping methods of the Shader class to be static
+	-Add the possibility for the user to choose the texture wrapping/sampling parameters
+
+DONEs:
+	-Implement JFA for proper alpha cutting
+	-Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
+	-Fixed depth frame buffer recreation, this caused a weird bug that the decal appeared on the back while it should've been culled.
+	-Fixed the depthBias 
+	-Added a drop down to debug textures it now supports:
+		-Model view
+		-Texture space view
+		-JFA->SDF result

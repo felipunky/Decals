@@ -7,8 +7,10 @@ out vec4 FragColor;
 
 uniform vec2 iResolution;
 uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
 uniform int iScale;
-//uniform sampler2D iChannel1;
+uniform bool iAlpha;
+uniform float iSmoothness;
 
 //uniform float iDistanceWidth;
 
@@ -23,6 +25,14 @@ void main()
     }
     else
     {
-        FragColor = texture( iChannel0, uv );
+        if (iAlpha)
+        {
+            float sdf = texture( iChannel1, uv ).r;
+            FragColor = vec4( mix( vec3( 0 ), vec3( 1 ), smoothstep( 0., iSmoothness, sdf ) ), 1 );
+        }
+        else
+        {
+            FragColor = texture( iChannel0, uv );
+        }
     }
 }
