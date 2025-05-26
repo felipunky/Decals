@@ -8,6 +8,7 @@
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten/emscripten.h>
+    #include <emscripten/html5.h>
     #define glGenVertexArrays glGenVertexArraysOES
     #define glBindVertexArray glBindVertexArrayOES
     #define GL_GLEXT_PROTOTYPES 1
@@ -52,6 +53,9 @@ const float depthBias = 0.00025;
 
 SDL_Window* window;
 SDL_GLContext context;
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx;
+#endif
 const char* glsl_version = nullptr;//"#version 300 es";
 static bool main_loop_running = true;
 bool frameIsEven = false;
@@ -351,10 +355,44 @@ struct frameBuffer
     std::vector<unsigned int> textures;
 };
 
+struct FrameBufferTextureParams
+{
+    GLint INTERNAL_FORMAT,
+          FORMAT;
+    GLenum TYPE;
+};
+
+void regenerateFramebufferTextureJFA(const glm::ivec2& widthHeight, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
+{
+    glDeleteTextures(1, &(framebuffer.textures[0]));
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    glGenTextures(1, &(framebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, widthHeight.x, widthHeight.y, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
+}
+
+void regenerateAllFramebufferTexturesJFA(std::vector<frameBuffer>& jfaFrameBuffer, frameBuffer& sdfFramebuffer, glm::ivec4& widthHeightJFA, const FrameBufferTextureParams& frameBufferTextureParams)
+{
+    widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+    
+    for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
+    {
+        regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
+    }
+    regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
+}
+
 frameBuffer depthFramebuffer;
 frameBuffer textureSpaceFramebuffer;
 std::vector<frameBuffer> jfaFrameBuffer(2);
 frameBuffer sdfFramebuffer;
+FrameBufferTextureParams frameBufferTextureParamsJFA{ /*INTERNAL_FORMAT =*/                    GL_RGBA32F, 
+                                                      /*frameBufferTextureParamsJFA.FORMAT =*/ GL_RGBA, 
+                                                      /*frameBufferTextureParamsJFA.TYPE =*/   GL_FLOAT };
 
 bool isGLTF = false;
 
@@ -442,6 +480,11 @@ extern "C"
         std::cout << "Reading decal image!" << std::endl;
         std::cout << "Decal buffer size: " << bufSize << std::endl;
 #endif
+        glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+            
+        frameJFA = 0;
+        regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+        
         decalImageBuffer = loadArray(buf, bufSize);
     }
     EMSCRIPTEN_KEEPALIVE
@@ -1541,10 +1584,17 @@ bool init()
     // Set OpenGL attributes
 #ifdef __EMSCRIPTEN__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1");
+    
+    SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
@@ -1578,23 +1628,59 @@ bool init()
     }
 
     // Create OpenGL context
+#ifndef __EMSCRIPTEN__
     context = SDL_GL_CreateContext(window);
     if (!context) 
     {
         std::cerr << "OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
     }
-
-#ifndef __EMSCRIPTEN__
     if (!gladLoadGL()) {
         std::cerr << "Failed to initialize GLAD!" << std::endl;
         return false;
+    }
+#else
+    // Skip SDL_GL_CreateContext. Manually create WebGL2 context instead.
+    EmscriptenWebGLContextAttributes attrs;
+    emscripten_webgl_init_context_attributes(&attrs);
+    attrs.alpha = true;
+    attrs.depth = true;
+    attrs.stencil = false;
+    attrs.antialias = false;
+    attrs.majorVersion = 2;
+    attrs.minorVersion = 0;
+    attrs.enableExtensionsByDefault = true;
+
+    ctx = emscripten_webgl_create_context("#canvas", &attrs);
+    if (ctx <= 0) {
+        printf("Failed to create WebGL2 context.\n");
+        return 1;
+    }
+
+    emscripten_webgl_make_context_current(ctx);
+    // Activate WebGL extensions.
+    std::array<const char*, 5> webglExtensions;
+    webglExtensions[0] = "OES_texture_float";
+    webglExtensions[1] = "EXT_color_buffer_float";
+    webglExtensions[2] = "WEBGL_color_buffer_float";
+    webglExtensions[3] = "OES_texture_half_float";
+    webglExtensions[4] = "EXT_color_buffer_half_float"; 
+    for (uint8_t i = 0u; i < (uint8_t)webglExtensions.size(); ++i)
+    {
+        EMSCRIPTEN_RESULT result = emscripten_webgl_enable_extension(ctx, webglExtensions[i]);
+        if (result == EMSCRIPTEN_RESULT_SUCCESS)
+        {
+            std::cout << "Enabled the " << webglExtensions[i] << " extension!" << std::endl;
+        }
     }
 #endif
 
     // Print OpenGL version
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GL Shading Language Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+    std::cout << "GL Renderer: " << glGetString(GL_RENDERER) << std::endl;
+    std::cout << "GL Extensions: " << glGetString(GL_EXTENSIONS) << std::endl;
+
 
     // Enable V-Sync
     /*if (SDL_GL_SetSwapInterval(1) == -1)
@@ -1620,7 +1706,12 @@ ImGuiIO initImgui()
     ImGui::StyleColorsDark();
 
     // Setup Platform/Renderer backends
+#ifndef __EMSCRIPTEN__
     ImGui_ImplSDL2_InitForOpenGL(window, context);
+#else
+    SDL_GLContext fake_context = (SDL_GLContext)1; // Dummy non-null pointer
+    ImGui_ImplSDL2_InitForOpenGL(window, fake_context);
+#endif
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     return io;
@@ -1690,12 +1781,6 @@ void initializeShaderSource()
     fullScreenPass = Shader("../shaders/FullScreen.vert",   "../shaders/FullScreen.frag",   fullScreenPassAttributeLocations, GLSLVersion);
 #endif
 }
-
-struct FrameBufferTextureParams
-{
-    GLint INTERNAL_FORMAT,
-          FORMAT;
-};
 
 void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
 {
@@ -1772,7 +1857,7 @@ void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
     std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " texture: " << textureSpaceFramebuffer.textures[0] << std::endl;
 }
 
-void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY)
+void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY, const FrameBufferTextureParams& frameBufferTextureParams)
 {
     /*
      * Start JFA Render Buffer Object
@@ -1783,11 +1868,7 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
     frameBuffer.textures = std::vector<unsigned int>(1);
     glGenTextures(1, &(frameBuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
-#ifdef __EMSCRIPTEN__
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#else
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
+    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, sizeX, sizeY, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1804,7 +1885,7 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
     int frameBufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (frameBufferStatus != GL_FRAMEBUFFER_COMPLETE)
     {
-        std::cout << "JFA Framebuffer not complete! Code:" << frameBufferStatus << std::endl;
+        std::cout << "JFA Framebuffer not complete! Code: " << std::hex << frameBufferStatus << std::endl;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -1814,7 +1895,7 @@ void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const
      */
 }
 
-void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY)
+void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY, const FrameBufferTextureParams& frameBufferTextureParams)
 {
     /*
      * Start SDF Render Buffer Object
@@ -1825,18 +1906,14 @@ void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& size
     frameBuffer.textures = std::vector<unsigned int>(1);
     glGenTextures(1, &(frameBuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[0]);
-#ifdef __EMSCRIPTEN__
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#else
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-#endif
+    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, sizeX, sizeY, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
 
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBuffer.textures[0], 0);
     
@@ -1847,7 +1924,7 @@ void createAndAttachSDFFramebuffer(frameBuffer& frameBuffer, const GLsizei& size
     int frameBufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (frameBufferStatus != GL_FRAMEBUFFER_COMPLETE)
     {
-        std::cout << "SDF Framebuffer not complete! Code:" << frameBufferStatus << std::endl;
+        std::cout << "SDF Framebuffer not complete! Code: " << std::hex << frameBufferStatus << std::endl;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
@@ -1938,7 +2015,7 @@ int main()
     fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
     fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
-    fileNames[1].decalBaseColor = "Assets/Textures/Watchmen.png";
+    fileNames[1].decalBaseColor = "Assets/Textures/Watchmen_2.png";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
@@ -2040,15 +2117,14 @@ int main()
     /** End Texture Space Buffer **/
 
     glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
-    //std::cout << "widthHeightJFA.x: " << widthHeightJFA.x << " widthHeightJFA.y: " << widthHeightJFA.y << std::endl;
+    std::cout << "widthHeightJFA.x: " << widthHeightJFA.x << " widthHeightJFA.y: " << widthHeightJFA.y << std::endl;
     /** Start JFA Buffer **/
     JFAPass.use();
     JFAPass.setInt("iChannel0", 0);
     JFAPass.setInt("iChannel1", 1);
-    //JFAPass.setVec2("iResolution", glm::vec2(widthHeightJFA.x, widthHeightJFA.y));
     for (size_t i = 0; i < jfaFrameBuffer.size(); ++i)
     {
-        createAndAttachRboJFA(jfaFrameBuffer[i], widthHeightJFA.z, widthHeightJFA.w);
+        createAndAttachRboJFA(jfaFrameBuffer[i], widthHeightJFA.z, widthHeightJFA.w, frameBufferTextureParamsJFA);
     }
     /** End JFA Buffer **/
     
@@ -2056,7 +2132,7 @@ int main()
     SDFPass.use();
     SDFPass.setInt("iChannel0", 0);
     //SDFPass.setVec2("iResolution", glm::vec2(widthHeightJFA.z, widthHeightJFA.w));
-    createAndAttachSDFFramebuffer(sdfFramebuffer, widthHeightJFA.z, widthHeightJFA.w);
+    createAndAttachSDFFramebuffer(sdfFramebuffer, widthHeightJFA.z, widthHeightJFA.w, frameBufferTextureParamsJFA);
     /** End SDF Buffer **/
 
     // Pass bias from Bbox.
@@ -2632,7 +2708,7 @@ void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
     glGenTextures(1, &(framebuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, shader.Width, shader.Height, 0, frameBufferTextureParams.FORMAT, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, shader.Width, shader.Height, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
@@ -2656,20 +2732,6 @@ void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
     
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, framebuffer.textures[0], 0);
 }
-
-void regenerateFramebufferTextureJFA(const glm::ivec2& widthHeight, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
-{
-    glDeleteTextures(1, &(framebuffer.textures[0]));
-    
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-    glGenTextures(1, &(framebuffer.textures[0]));
-    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, widthHeight.x, widthHeight.y, 0, frameBufferTextureParams.FORMAT, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
-}
-
 
 void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName, const std::string& fileNameDecal)
 {
@@ -2735,6 +2797,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     FrameBufferTextureParams frameBufferTextureParams;
     frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
     frameBufferTextureParams.FORMAT = GL_RGBA;
+    frameBufferTextureParams.TYPE = GL_UNSIGNED_BYTE;
     regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams);
 }
 
@@ -2897,6 +2960,10 @@ void main_loop()
         }
     }
 
+#ifdef __EMSCRIPTEN__
+    emscripten_webgl_make_context_current(ctx); // Just in case
+#endif
+    
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
@@ -2984,72 +3051,26 @@ void main_loop()
                 ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
         }
         ImGui::EndCombo();
+        int pickModel = 1;
+        bool recomputeModel = false;
         if (strcmp(selectedModel, "Workboot") == 0 && currentModel != SHIRT)
         {
             currentModel = SHIRT;
-            
-            regenerateModel(modelData, geometryPass, modelsData[1], textureSpaceFramebuffer, fileNames[1].baseColor, fileNames[1].normal, fileNames[1].decalBaseColor);
-            
-            widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
-            
-            frameJFA = 0;
-            FrameBufferTextureParams frameBufferTextureParams;
-#ifdef __EMSCRIPTEN__
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
-#else
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
-#endif
-            frameBufferTextureParams.FORMAT = GL_RGBA;
-            for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
-            {
-                regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
-            }
-#ifdef __EMSCRIPTEN__
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
-#else
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
-#endif
-            frameBufferTextureParams.FORMAT = GL_RGBA;
-            regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
-            
-            //JFAPass.setVec2("iResolution", glm::vec2(decalsPass.Width, decalsPass.Height));
-            //SDFPass.setVec2("iResolution", glm::vec2(decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR));
-            
-            
-            //std::cout << "Workboot: Width: " << decalsPass.Width << " Height: " << decalsPass.Height;
+            pickModel = 1;
+            recomputeModel = true;
         }
         else if (strcmp(selectedModel, "Shirt") == 0 && currentModel != WORKBOOT)
         {
             currentModel = WORKBOOT;
-            
-            regenerateModel(modelData, geometryPass, modelsData[0], textureSpaceFramebuffer, fileNames[0].baseColor, fileNames[0].normal, fileNames[0].decalBaseColor);
-            
-            widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+            pickModel = 0;
+            recomputeModel = true;
+        }
+        if (recomputeModel)
+        {
+            regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].decalBaseColor);
             
             frameJFA = 0;
-            FrameBufferTextureParams frameBufferTextureParams;
-#ifdef __EMSCRIPTEN
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
-#else
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
-#endif
-            frameBufferTextureParams.FORMAT = GL_RGBA;
-            for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
-            {
-                regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), jfaFrameBuffer[i], frameBufferTextureParams);
-            }
-#ifdef __EMSCRIPTEN
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
-#else
-            frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA32F;
-#endif
-            frameBufferTextureParams.FORMAT = GL_RGBA;
-            regenerateFramebufferTextureJFA(glm::ivec2(widthHeightJFA.z, widthHeightJFA.w), sdfFramebuffer, frameBufferTextureParams);
-            
-            //JFAPass.setVec2("iResolution", glm::vec2(decalsPass.Width, decalsPass.Height));
-            //SDFPass.setVec2("iResolution", glm::vec2(decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR));
-            
-            //std::cout << "Shirt: Width: " << decalsPass.Width << " Height: " << decalsPass.Height;
+            regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
         }
     }
     if (ImGui::Button("Split Screen"))
@@ -3173,18 +3194,18 @@ void main_loop()
         //std::cout << "Max steps: " << maxSteps << std::endl;
         JFAPass.setFloat("iMaxSteps", maxSteps);
         
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
         textureWrapParams = Shader::REPEAT;
         JFAPass.textureWrap(textureWrapParams);
         textureSampleParams = Shader::NEAREST;
         JFAPass.textureSample(textureSampleParams);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
         textureWrapParams = Shader::CLAMP_TO_EDGE;
         JFAPass.textureWrap(textureWrapParams);
         textureSampleParams = Shader::LINEAR_MIPS;
         JFAPass.textureSample(textureSampleParams);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
         
         glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);

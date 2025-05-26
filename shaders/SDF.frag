@@ -15,18 +15,19 @@ uniform float iDistanceWidth;
 
 void main()
 {
+//    FragColor = texture( iChannel0, TexCoords );
     vec2 adjustedFragCoord = ( TexCoords * iResolution ) + .5;
     vec2 uv = adjustedFragCoord / iResolution;
-    
+
     vec4 jfa = texture( iChannel0, uv );
-    
+
     vec2 insideCoords = jfa.xy;
     vec2 outsideCoords = jfa.zw;
-    
+
     // calculate distances
     float outsideDist = clamp(length(outsideCoords-adjustedFragCoord) / iDistanceWidth, 0.0, 1.0);
     float insideDist  = clamp(length(insideCoords-adjustedFragCoord)  / iDistanceWidth, 0.0, 1.0);
-    
+
     // calculate output distance
     float signedDistance = 0.5 + outsideDist * 0.5 - insideDist * 0.5;
 

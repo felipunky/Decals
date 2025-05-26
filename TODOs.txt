@@ -4,6 +4,7 @@ TODOs:
 	-Play with the smoothstep for the Decal's SDF
 	-Fix broken decal, to trigger:
 		-Upload a decal, change model
+		-This is probably due to not recreating the TextureSpaceFramebuffer when changing.
 	-Fix broken download of Decal on WASM:
 		-To trigger, change model through the GUI.
 	-Optimize it for the web
@@ -11,7 +12,6 @@ TODOs:
 		-We need this to be able to use RenderDoc to debug shaders.
 	-Add proper scale params for the JFA input/decal texture
 	-Add shadows look into CSM or simple Shadow Mapping
-	-Get the newly implemented JFA to compile on WASM
 	-Fix weird ram leaks
 	-Add file uploading from drag and drop
 	-Add touch events
@@ -19,6 +19,7 @@ TODOs:
 		-https://superhivemarket.com/products/quick-decals
 	-Get the texture sampling/wrapping methods of the Shader class to be static
 	-Add the possibility for the user to choose the texture wrapping/sampling parameters
+	-Fix texture sampling parameter errors.
 
 DONEs:
 	-Implement JFA for proper alpha cutting
@@ -29,3 +30,4 @@ DONEs:
 		-Model view
 		-Texture space view
 		-JFA->SDF result
+	-Get the newly implemented JFA to compile on WASM
