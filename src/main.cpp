@@ -201,6 +201,7 @@ bool showHitPoint  = !false;
 bool normalMap     = !false;
 bool splitScreen   = false;
 bool alphaJFA      = true;
+bool showSDFBox    = false;
 
 int scale = 1;
 float blend = 0.5f;
@@ -390,11 +391,28 @@ frameBuffer depthFramebuffer;
 frameBuffer textureSpaceFramebuffer;
 std::vector<frameBuffer> jfaFrameBuffer(2);
 frameBuffer sdfFramebuffer;
-FrameBufferTextureParams frameBufferTextureParamsJFA{ /*INTERNAL_FORMAT =*/                    GL_RGBA32F, 
-                                                      /*frameBufferTextureParamsJFA.FORMAT =*/ GL_RGBA, 
-                                                      /*frameBufferTextureParamsJFA.TYPE =*/   GL_FLOAT };
+
+FrameBufferTextureParams frameBufferTextureParamsJFA{ GL_RGBA32F, GL_RGBA, GL_FLOAT };
 
 bool isGLTF = false;
+
+void regenerateTextureSpaceFramebuffer(frameBuffer& framebuffer, const Shader& shader)
+{
+    glDeleteTextures(1, &(framebuffer.textures[0]));
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+
+    glGenTextures(1, &(framebuffer.textures[0]));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
+}
+
+void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight, 
+              /* In and Out */ ModelData& modelData,
+              const glm::mat4& projection, const glm::mat4& view, const bool& debug);
 
 // We need this so that we don't need to add each module to the Emscripten build.
 extern "C"
@@ -483,9 +501,12 @@ extern "C"
         glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
             
         frameJFA = 0;
+        decalsPass.createTextureFromFile(&(modelData.material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
         regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
-        
-        decalImageBuffer = loadArray(buf, bufSize);
+        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+                 /* In and Out */ modelData, 
+                 projection, view, false);
+        downloadImage = 1u;
     }
     EMSCRIPTEN_KEEPALIVE
     void passSize(uint16_t* buf, int bufSize)
@@ -533,17 +554,8 @@ extern "C"
 #else
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(textureSpaceFramebuffer.textures[0]));
         glDeleteTextures(1, &(modelData.material.baseColor));
-
-        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
-
-        glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
+        regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass);
         
 #ifdef OPTIMIZE
 #else
@@ -578,20 +590,12 @@ extern "C"
 #else
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(textureSpaceFramebuffer.textures[0]));
         glDeleteTextures(1, &(modelData.material.normal));
-
-        glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
-
-        glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
 
         geometryPass.Width  = width;
         geometryPass.Height = height;
+
+        regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass);
 #ifdef OPTIMIZE
 #else
         std::cout << "Normal Width: "  << +geometryPass.Width  << std::endl;
@@ -1679,8 +1683,9 @@ bool init()
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GL Shading Language Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
     std::cout << "GL Renderer: " << glGetString(GL_RENDERER) << std::endl;
+#ifdef __EMSCRIPTEN__
     std::cout << "GL Extensions: " << glGetString(GL_EXTENSIONS) << std::endl;
-
+#endif
 
     // Enable V-Sync
     /*if (SDL_GL_SetSwapInterval(1) == -1)
@@ -3006,35 +3011,38 @@ void main_loop()
             showTextures = JFA;
         }
     }
-    static const char* cameraTypes[]{ "FPS", "Trackball" };
-    static const char* selectedItem = cameraTypes[1];
-    bool cameraSelectionDirty = ImGui::BeginCombo("Camera", selectedItem, 0);
-    //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
-    if (cameraSelectionDirty)
+    if (showTextures != CURRENT_MODEL)
     {
-        for (int n = 0; n < IM_ARRAYSIZE(cameraTypes); n++)
+        static const char* cameraTypes[]{ "FPS", "Trackball" };
+        static const char* selectedItem = cameraTypes[1];
+        bool cameraSelectionDirty = ImGui::BeginCombo("Camera", selectedItem, 0);
+        //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
+        if (cameraSelectionDirty)
         {
-            bool is_selected = (selectedItem == cameraTypes[n]);
-            if (ImGui::Selectable(cameraTypes[n], is_selected))
+            for (int n = 0; n < IM_ARRAYSIZE(cameraTypes); n++)
             {
-                selectedItem = cameraTypes[n];
+                bool is_selected = (selectedItem == cameraTypes[n]);
+                if (ImGui::Selectable(cameraTypes[n], is_selected))
+                {
+                    selectedItem = cameraTypes[n];
+                }
+                if (is_selected)
+                {
+                    ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+                }
             }
-            if (is_selected)
+            ImGui::EndCombo();
+            //std::cout << "CAMERA: " << CAMERA << std::endl;
+            if (strcmp(selectedItem, "FPS") == 0)
             {
-                ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
+                CAMERA = FPS;
+                //std::cout << "FPS" << std::endl;
             }
-        }
-        ImGui::EndCombo();
-        //std::cout << "CAMERA: " << CAMERA << std::endl;
-        if (strcmp(selectedItem, "FPS") == 0)
-        {
-            CAMERA = FPS;
-            //std::cout << "FPS" << std::endl;
-        }
-        else if (strcmp(selectedItem, "Trackball") == 0)
-        {
-            CAMERA = TRACK_BALL;
-            //std::cout << "Trackball" << std::endl;
+            else if (strcmp(selectedItem, "Trackball") == 0)
+            {
+                CAMERA = TRACK_BALL;
+                //std::cout << "Trackball" << std::endl;
+            }
         }
     }
     static const char* modelsToSelect[]{ "Workboot", "Shirt" };
@@ -3070,79 +3078,108 @@ void main_loop()
             regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].decalBaseColor);
             
             frameJFA = 0;
+            downloadImage = 1u;
             regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+
+            regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass);
         }
     }
-    if (ImGui::Button("Split Screen"))
+    if (showTextures == CURRENT_MODEL)
     {
-        splitScreen = !splitScreen;
+        if (ImGui::Button("Split Screen"))
+        {
+            splitScreen = !splitScreen;
+        }
+        if (ImGui::Button("Enable Normal Map"))
+        {
+            normalMap = !normalMap;
+        }
+        if (ImGui::Button("See Light"))
+        {
+            light.toggle = !light.toggle;
+        }
     }
-    ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
-    if (ImGui::Button("Enable Normal Map"))
+    if (showTextures == TEXTURE_SPACE)
     {
-        normalMap = !normalMap;
+        ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
     }
-    if (ImGui::Button("See Light"))
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE)
     {
-        light.toggle = !light.toggle;
+        if (ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10))
+        {
+            frameJFA = 0;
+        }
+        if (ImGui::Button("Show Blend"))
+        {
+            showSDFBox = !showSDFBox;
+        }
+        ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
     }
-    ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10);
-    ImGui::SliderFloat("Blend Factor", &blend, 0.0f, 1.0f);
     if (ImGui::Button("Use Alpha for Decal"))
     {
         alphaJFA = !alphaJFA;
         frameJFA = 0u;
     }
-    if (ImGui::SliderFloat("Alpha Cut", &alphaCut, 0.0f, 1.0f))
+    if (alphaJFA)
     {
-        frameJFA = 0u;
+        if (ImGui::SliderFloat("Alpha Cut", &alphaCut, 0.0f, 1.0f))
+        {
+            frameJFA = 0u;
+        }
+        ImGui::SliderFloat("Smoothness", &smoothAlpha, 0.0f, 1.0f);
+        ImGui::SliderInt("Pixel Width Alpha", &distanceWidthJFA, 1, 32);
     }
-    ImGui::SliderFloat("Smoothness", &smoothAlpha, 0.0f, 1.0f);
-    ImGui::SliderInt("Pixel Width Alpha", &distanceWidthJFA, 1, 32);
-
-    glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
-    ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
-    ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
-    if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation ||
-        frame == 1u)
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE)
     {
-        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), -mousePositionY + HEIGHT, widthHeight,
-            /* In and Out */ modelData,
-            projection, view, false);
+        glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
+        ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
+        ImGui::SliderFloat("Projector Orientation", &projectorRotation, 0.0f, 360.0f);
+        if (projectorDirty.x != projectorSize || projectorDirty.y != projectorRotation ||
+            frame == 1u)
+        {
+            rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), -mousePositionY + HEIGHT, widthHeight,
+                     /* In and Out */ modelData,
+                     projection, view, false);
+        }
     }
-
     if (ImGui::Button("Flip decals"))
     {
         flipDecal = !flipDecal;
+        frameJFA = 0;
     }
-    if (ImGui::Button("Show Bounding Box"))
+    if (showTextures == CURRENT_MODEL)
     {
-        showBBox = !showBBox;
+        if (ImGui::Button("Show Bounding Box"))
+        {
+            showBBox = !showBBox;
+        }
+        if (ImGui::Button("Show Projector"))
+        {
+            showProjector = !showProjector;
+        }
+        if (ImGui::Button("Show Hit Point"))
+        {
+            showHitPoint = !showHitPoint;
+        }
     }
-    if (ImGui::Button("Show Projector"))
+    if (showTextures == CURRENT_MODEL)
     {
-        showProjector = !showProjector;
+        for (int i = 0; i < 1; ++i)
+        {
+            ImGuizmo::PushID(i);
+            EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(modelData.modelMatrix), lastUsing == i, splitScreen, io);
+            if (ImGuizmo::IsUsing())
+            {
+                lastUsing = i;
+            }
+            ImGuizmo::PopID();
+        }
     }
-    if (ImGui::Button("Show Hit Point"))
-    {
-        showHitPoint = !showHitPoint;
-    }
+    ImGui::End();
     // If we have a GLTF we need to invert the texture coordinates.
     flipper = isGLTF ? 1 : 0;
     decalsPass.use();
     decalsPass.setInt("iFlipper", flipper);
-
-    for (int i = 0; i < 1; ++i)
-    {
-        ImGuizmo::SetID(i);
-        EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(modelData.modelMatrix), lastUsing == i, splitScreen, io);
-        if (ImGuizmo::IsUsing())
-        {
-            lastUsing = i;
-        }
-    }
-
-    ImGui::End();
 
     flip = (flipDecal ? 1 : 0);
 
@@ -3193,6 +3230,8 @@ void main_loop()
         float maxSteps = std::floor(std::log2(std::max(widthHeightJFA.z, widthHeightJFA.w)));
         //std::cout << "Max steps: " << maxSteps << std::endl;
         JFAPass.setFloat("iMaxSteps", maxSteps);
+        JFAPass.setInt("iScale", scale);
+        JFAPass.setBool("iFlipDecal", flipDecal);
         
         textureWrapParams = Shader::REPEAT;
         JFAPass.textureWrap(textureWrapParams);
@@ -3200,7 +3239,7 @@ void main_loop()
         JFAPass.textureSample(textureSampleParams);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
-        textureWrapParams = Shader::CLAMP_TO_EDGE;
+        textureWrapParams = Shader::REPEAT;
         JFAPass.textureWrap(textureWrapParams);
         textureSampleParams = Shader::LINEAR_MIPS;
         JFAPass.textureSample(textureSampleParams);
@@ -3249,16 +3288,18 @@ void main_loop()
 
     decalsPass.use();
     decalsPass.setMat4("model", modelData.modelMatrix);
-    decalsPass.setMat4("projection", projection);
     decalsPass.setMat4("view", view);
+    decalsPass.setMat4("projection", projection);
+    decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
+    
     decalsPass.setVec2("iResolution", widthHeight);
     decalsPass.setInt("iScale", scale);
     decalsPass.setFloat("iFlip", flipFloat);
     decalsPass.setFloat("iBlend", blend);
     decalsPass.setFloat("iSmoothness", smoothAlpha * 0.5);
-    decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
     decalsPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
     decalsPass.setBool("iAlpha", alphaJFA);
+    decalsPass.setBool("iShowSDFBox", showSDFBox);
 
     glBindVertexArray(modelData.openGLObject.VAO);
 
@@ -3266,19 +3307,20 @@ void main_loop()
     decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
+    textureWrapParams = Shader::REPEAT;
+    decalsPass.textureWrap(textureWrapParams);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+    textureWrapParams = Shader::CLAMP_TO_EDGE;
+    decalsPass.textureWrap(textureWrapParams);
     textureSampleParams = Shader::NEAREST;
     decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
     //textureSampleParams = Shader::LINEAR;
     //decalsPass.textureSample(textureSampleParams);
-    if (alphaJFA)
-    {
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
-    }
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
         
     glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3286,15 +3328,18 @@ void main_loop()
 
     glDrawElements(GL_TRIANGLES, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
-    if (downloadImage == 1u || frame == 1u)
+    if (downloadImage == 1u)
     {
         decalResult = uploadImage();
         // counter = 0;
         downloadImage = 0u;
 
-        // Get the first position for ray picking.
-        mousePositionX = WIDTH / 2;
-        mousePositionY = HEIGHT / 2;
+        if (frame < 2u)
+        {
+            // Get the first position for ray picking.
+            mousePositionX = WIDTH / 2;
+            mousePositionY = HEIGHT / 2;
+        }
         std::cout << "Uploading image!" << std::endl;
 #ifdef OPTIMIZE
 #else
@@ -3324,11 +3369,8 @@ void main_loop()
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-        if (alphaJFA)
-        {
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
-        }
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
         
         fullScreenPass.setInt("iScale", fullScreenPassRepeat);
         

@@ -11,6 +11,8 @@ uniform int iFrame;
 uniform vec2 iResolution;
 uniform float iAlphaCut;
 uniform float iMaxSteps;
+uniform int iScale;
+uniform bool iFlipDecal;
 
 vec4 StepJFA (in vec2 fragCoord, in float level)
 {
@@ -55,23 +57,28 @@ vec4 StepJFA (in vec2 fragCoord, in float level)
 void main()
 { 
     //FragColor = vec4( texture( iChannel0, TexCoords ).r + 0.001, 0, 0, 1 );
-     vec2 uv = TexCoords;
-     vec2 fragCoordUnnormalized = ( ( uv * iResolution ) + .5 );
-    
-     if ( iFrame == 0 )
-     {
-         vec4 initialTexture = texture( iChannel1, uv );
-         bool mask = initialTexture.a > iAlphaCut;
-         FragColor = ( mask ? vec4( fragCoordUnnormalized, 0.0, 0.0 ) : vec4( 0.0 ) );
-         FragColor = ( !mask ? vec4( 0.0, 0.0, fragCoordUnnormalized ) : vec4( 0.0 ) );
-     }
-     else if ( iFrame <= int( iMaxSteps + 1. ) )
-     {
-         vec4 bestCoords = StepJFA( fragCoordUnnormalized, floor( float( iFrame - 1 ) ) );
-         FragColor = bestCoords;
-     }
-     else
-     {
-         FragColor = texture( iChannel0, uv );
-     }
+    vec2 uv = TexCoords;
+    vec2 fragCoordUnnormalized = ( ( uv * iResolution ) + .5 );
+
+    if ( iFrame == 0 )
+    {
+        if (iFlipDecal)
+        {
+            uv.y = 1.0 - uv.y;
+        }
+        uv = fract( uv * float( iScale ) );
+        vec4 initialTexture = texture( iChannel1, uv );
+        bool mask = initialTexture.a > iAlphaCut;
+        FragColor = ( mask ? vec4( fragCoordUnnormalized, 0.0, 0.0 ) : vec4( 0.0 ) );
+        FragColor = ( !mask ? vec4( 0.0, 0.0, fragCoordUnnormalized ) : vec4( 0.0 ) );
+    }
+    else if ( iFrame <= int( iMaxSteps + 1. ) )
+    {
+        vec4 bestCoords = StepJFA( fragCoordUnnormalized, floor( float( iFrame - 1 ) ) );
+        FragColor = bestCoords;
+    }
+    else
+    {
+        FragColor = texture( iChannel0, uv );
+    }
 }

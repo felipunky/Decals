@@ -11,15 +11,17 @@ uniform mat4 projection;
 uniform mat4 decalProjector;
 
 uniform vec2 iResolution;
-uniform sampler2D iChannel0;
-uniform sampler2D iChannel1;
-uniform sampler2D iDepth;
-uniform sampler2D iSDF;
 uniform int iScale;
 uniform float iFlip;
 uniform float iBlend;
 uniform float iSmoothness;
 uniform bool iAlpha;
+uniform bool iShowSDFBox;
+
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel0;
+uniform sampler2D iDepth;
+uniform sampler2D iSDF;
 
 uniform float bias;
 
@@ -49,7 +51,7 @@ void main()
     if (abs(decalUV.z - bias) > (depth))
     {
         boxSize.z = 0.;
-        decalUV += 10000.;
+        //decalUV += 10000.;
     }
     
     float boxSDF = SDFBox(decalUV-.5, boxSize);
@@ -60,19 +62,21 @@ void main()
         decalUV.y = 1. - decalUV.y;
     }
 
-    decalUV.xy = decalUV.xy * float(iScale);
+    decalUV.xy = fract(decalUV.xy * float(iScale));
 
     vec4 projectedDecal = texture(iChannel0, decalUV.xy);
     vec4 albedoMap      = texture(iChannel1, texCoords);
     
     if (iAlpha)
     {
-        float sdf       = texture(iSDF,      decalUV.xy).r;
+        float sdf       = texture(iSDF,      WorldPos.xy).r;
         projectedDecal.rgb = mix( albedoMap.rgb, projectedDecal.rgb, smoothstep( 0., iSmoothness, sdf ) );
     }
         
     float minDecalsUV = (max(decalUV.x, decalUV.y), decalUV.z);
 
-    vec3 colorOut = mix( projectedDecal.rgb, albedoMap.rgb, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
+    float showSDFBox = (iShowSDFBox ? 0.0 : 1.0);
+
+    vec3 colorOut = mix( projectedDecal.rgb * showSDFBox, albedoMap.rgb, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
     FragColor = vec4( colorOut, 1.0 );
 }
