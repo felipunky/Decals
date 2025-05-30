@@ -17,6 +17,7 @@ TODOs:
 	-Fix floating point texture sampling issues on mobile.
 	-Fix filtering of JFA pass textures.
 	-Fix issues for download of the Albedo with Decals when the state changes.
+	-Investigate whether or not the textures should be linearized.
 
 DONEs:
 	-Implement JFA for proper alpha cutting

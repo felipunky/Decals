@@ -392,7 +392,11 @@ frameBuffer textureSpaceFramebuffer;
 std::vector<frameBuffer> jfaFrameBuffer(2);
 frameBuffer sdfFramebuffer;
 
+#ifdef __EMSCRIPTEN__
+FrameBufferTextureParams frameBufferTextureParamsJFA{ GL_RGBA16F, GL_RGBA, GL_FLOAT };
+#else
 FrameBufferTextureParams frameBufferTextureParamsJFA{ GL_RGBA32F, GL_RGBA, GL_FLOAT };
+#endif
 
 bool isGLTF = false;
 
