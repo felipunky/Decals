@@ -1,4 +1,5 @@
 TODOs:
+	-Add normal mapping support from decals
 	-Parallax Occlusion Mapping
 	-Refactor the decal upload
 	-Play with the smoothstep for the Decal's SDF
@@ -11,15 +12,18 @@ TODOs:
 	-Add touch events
 	-Add noise so that we can blend with the background more naturally, see:
 		-https://superhivemarket.com/products/quick-decals
+		-Modify JFA to be able to pass the gradient information or similar to play with this
 	-Get the texture sampling/wrapping methods of the Shader class to be static
 	-Add the possibility for the user to choose the texture wrapping/sampling parameters
 	-Fix texture sampling parameter errors.
 	-Fix floating point texture sampling issues on mobile.
 	-Fix filtering of JFA pass textures.
 	-Fix issues for download of the Albedo with Decals when the state changes.
-	-Investigate whether or not the textures should be linearized.
+	-Investigate whether or not the textures should be linearized (albedo normal).
 
 DONEs:
+	-Pass the vec2 for the light from CPU so there's no need to recompute on the vertex shader the light position
+	-Add a parameter to control the downsampling factor for the JFA
 	-Implement JFA for proper alpha cutting
 	-Add a fallback so that we don't need to compute the JFA when we don't want alpha to be taken into account.
 	-Fixed depth frame buffer recreation, this caused a weird bug that the decal appeared on the back while it should've been culled.
@@ -40,3 +44,4 @@ DONEs:
 	-Added visualization of the SDF Box for the decals
 	-Add proper scale params for the JFA input/decal texture
 	-Added collapsable ImGui params depending on the state of the GUI
+	-Fixed mobile compatibility

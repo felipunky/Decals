@@ -209,6 +209,7 @@ float alphaCut = 0.1f;
 float smoothAlpha = 0.5f;
 int distanceWidthJFA = 8;
 int fullScreenPassRepeat = 2;
+int jfaFactor = 4;
 
 enum SHOW_TEXTURES
 {
@@ -378,7 +379,7 @@ void regenerateFramebufferTextureJFA(const glm::ivec2& widthHeight, frameBuffer&
 
 void regenerateAllFramebufferTexturesJFA(std::vector<frameBuffer>& jfaFrameBuffer, frameBuffer& sdfFramebuffer, glm::ivec4& widthHeightJFA, const FrameBufferTextureParams& frameBufferTextureParams)
 {
-    widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+    widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
     
     for (uint8_t i = 0u; i < (uint8_t)jfaFrameBuffer.size(); ++i)
     {
@@ -502,7 +503,7 @@ extern "C"
         std::cout << "Reading decal image!" << std::endl;
         std::cout << "Decal buffer size: " << bufSize << std::endl;
 #endif
-        glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+        glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
             
         frameJFA = 0;
         decalsPass.createTextureFromFile(&(modelData.material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
@@ -2830,7 +2831,7 @@ void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newM
 void main_loop()
 {
     widthHeight = glm::vec2(WIDTH, HEIGHT);
-    glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
+    glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
 
     // No need to compute this every frame as the FOV stays always the same.
     glm::vec2 halfWidthHeight = widthHeight * glm::vec2(0.5, 0.5);
@@ -2854,7 +2855,7 @@ void main_loop()
     /**
      * Start Light Setup
      */
-    const float speed = 0.5f;
+    const float speed = 0.1f;
     float timeSpeed = iTime * speed;
     float sinTime = sinf(timeSpeed) * 2.0f;
     float cosTime = cosf(timeSpeed) * 2.0f;
@@ -3107,12 +3108,18 @@ void main_loop()
     {
         ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
     }
+    if (ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10))
+    {
+        frameJFA = 0;
+    }
+    if (ImGui::SliderInt("Scale JFA", &jfaFactor, 2, 8))
+    {
+        frameJFA = 0;
+        downloadImage = 1u;
+        regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+    }
     if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE)
     {
-        if (ImGui::SliderInt("Texture Coordinates Scale", &scale, 1, 10))
-        {
-            frameJFA = 0;
-        }
         if (ImGui::Button("Show Blend"))
         {
             showSDFBox = !showSDFBox;
@@ -3430,6 +3437,7 @@ void main_loop()
         deferredPass.setInt("iFlipper", flipper);
         deferredPass.setInt("iNormals", enableNormals);
         deferredPass.setFloat("iTime", iTime);
+        
         // finally render quad
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

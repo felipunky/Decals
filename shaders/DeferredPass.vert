@@ -16,6 +16,7 @@ uniform mat4 model;
 uniform mat4 view;                                         
 uniform mat4 projection;   
 uniform vec3 viewPos;
+uniform vec3 lightPos;
 uniform float iTime;
 
 mat2 rot(const in float a)
@@ -40,11 +41,6 @@ void main()
   vec3 B = cross(N, T);
 
   TBN = transpose(mat3(T, B, N));
-
-  float speed = 0.5 * iTime;
-  vec2 sinCosNormalized = vec2(sin(speed), cos(speed))*0.5+0.5;
-
-  vec3 lightPos = vec3(sinCosNormalized.x, 1.0, sinCosNormalized.y);
 
   TangentLightPos = TBN * lightPos;
   TangentViewPos  = TBN * viewPos;
