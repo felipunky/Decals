@@ -1,9 +1,10 @@
 precision highp float;
 
-in vec2 TexCoords;
 in vec3 WorldPos;
+in vec2 TexCoords;
 
 out vec4 FragColor;
+out vec4 Normal;
 
 uniform mat4 model;                                        
 uniform mat4 view;                                         
@@ -18,8 +19,15 @@ uniform float iSmoothness;
 uniform bool iAlpha;
 uniform bool iShowSDFBox;
 
-uniform sampler2D iChannel1;
+// Decal Albedo
 uniform sampler2D iChannel0;
+// Albedo
+uniform sampler2D iChannel1;
+// Decal Normal
+uniform sampler2D iChannel2;
+// Normal
+uniform sampler2D iChannel3;
+
 uniform sampler2D iDepth;
 uniform sampler2D iSDF;
 
@@ -33,12 +41,15 @@ float SDFBox(vec3 p, vec3 b)
     return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
-bool CheckBox(const in vec3 uv, const in float bias)
+// https://blog.selfshadow.com/publications/blending-in-detail/
+vec3 RNM( vec3 normalMap, vec3 decalsNormals )
 {
-    float oneMinusBias = 1.0 - bias;
-    return (uv.x >= oneMinusBias || uv.x <= bias || 
-            uv.y >= oneMinusBias || uv.y <= bias || 
-            uv.z >= oneMinusBias || uv.z <= bias);
+    normalMap *= 2.0 - 1.0;
+    decalsNormals *= 2.0 - 1.0;
+    vec3 n1 = normalMap     * vec3( 2,  2, 2) + vec3(-1, -1,  0);
+    vec3 n2 = decalsNormals * vec3(-2, -2, 2) + vec3( 1,  1, -1);
+    vec3 n  = n1*dot(n1, n2)/n1.z - n2;
+    return n;
 }
 
 void main()
@@ -46,37 +57,53 @@ void main()
     vec3 decalUV = WorldPos;
     vec2 texCoords = TexCoords;
 
-    vec3 boxSize = vec3(0.5);
+    vec2 reciprocalDecalResolution = 1. / vec2( textureSize( iChannel0, 0 ) ); 
+    float maxReciprocalDecalResolution = max( reciprocalDecalResolution.x, reciprocalDecalResolution.y );
+
+    vec3 boxSize = vec3(0.5) + iBlend * maxReciprocalDecalResolution;
     float depth = texture(iDepth, decalUV.xy).r;
     if (abs(decalUV.z - bias) > (depth))
     {
         boxSize.z = 0.;
-        //decalUV += 10000.;
     }
     
-    float boxSDF = SDFBox(decalUV-.5, boxSize);
-    float boxSDFRemapped = boxSDF * 0.5 + 0.5;
+    float boxSDF = SDFBox( decalUV - 0.5, boxSize );
 
     if (iFlip == 1.0)
     {
         decalUV.y = 1. - decalUV.y;
     }
 
-    decalUV.xy = fract(decalUV.xy * float(iScale));
+    decalUV.xy = fract( decalUV.xy * float( iScale ) );
 
-    vec4 projectedDecal = texture(iChannel0, decalUV.xy);
-    vec4 albedoMap      = texture(iChannel1, texCoords);
-    
+    vec4 projectedDecal = texture( iChannel0, decalUV.xy );
+    vec4 decalsNormals  = texture( iChannel2, decalUV.xy );
+
+    vec4 albedoMap      = texture( iChannel1, texCoords );
+    vec4 normalMap      = texture( iChannel3, texCoords );
+
     if (iAlpha)
     {
-        float sdf       = texture(iSDF,      WorldPos.xy).r;
-        projectedDecal.rgb = mix( albedoMap.rgb, projectedDecal.rgb, smoothstep( 0., iSmoothness, sdf ) );
+        float sdf          = texture(iSDF,      WorldPos.xy).r;
+        float renderedSDF  = smoothstep( 0.0, iSmoothness, sdf );
+        projectedDecal.rgb = mix( albedoMap.rgb, projectedDecal.rgb, renderedSDF );
+        decalsNormals.xyz   = mix( normalMap.xyz, decalsNormals.xyz,  renderedSDF );
     }
-        
-    float minDecalsUV = (max(decalUV.x, decalUV.y), decalUV.z);
 
+    float smoothnessBox = maxReciprocalDecalResolution * iBlend * 10.0;
     float showSDFBox = (iShowSDFBox ? 0.0 : 1.0);
 
-    vec3 colorOut = mix( projectedDecal.rgb * showSDFBox, albedoMap.rgb, smoothstep( 0.0, minDecalsUV * iBlend, boxSDF ) );
+    //vec2 fWidthDecalUV = fwidth( decalUV.xy );
+    //float pDer = ( fWidthDecalUV.x + fWidthDecalUV.y );
+
+    //vec3 debug = ( dFdx( decalUV.y ) < 0.1 ? vec3( 1.0, 0.0, 0.0 ) : projectedDecal.rgb );
+
+    float renderBoxSDF = smoothstep( -smoothnessBox, smoothnessBox, boxSDF );
+
+    vec3 colorOut = mix( projectedDecal.rgb * showSDFBox, albedoMap.rgb, renderBoxSDF );
     FragColor = vec4( colorOut, 1.0 );
+
+    vec3 normals = mix( decalsNormals.xyz, normalMap.xyz, renderBoxSDF );
+    normals = RNM( normalMap.xyz, normals ) * 0.5 + 0.5;
+    Normal = vec4( mix( normals, normalMap.xyz, 1.-showSDFBox ), 1.0 );
 }

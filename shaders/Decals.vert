@@ -8,7 +8,7 @@ in vec3 VertexNormals;
 in vec2 VertexTextureCoords;
 
 out vec3 WorldPos;  
-out vec2 TexCoords;           
+out vec2 TexCoords;  
                      
 uniform mat4 model;                                        
 uniform mat4 view;                                         
@@ -22,6 +22,7 @@ void main()
   vec4 objPos = vec4(VertexPosition.xyz, 1.0);      
   WorldPos = (decalProjector * objPos).xyz * 0.5 + 0.5;
   TexCoords = VertexTextureCoords;
+
   vec4 Position = vec4(VertexTextureCoords, 0., 1.);
   if (iFlipAlbedo == 1.)
   {

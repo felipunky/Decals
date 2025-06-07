@@ -8,9 +8,11 @@ out vec4 FragColor;
 uniform vec2 iResolution;
 uniform sampler2D iChannel0;
 uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
 uniform int iScale;
 uniform bool iAlpha;
 uniform float iSmoothness;
+uniform bool iNormal;
 
 //uniform float iDistanceWidth;
 
@@ -32,7 +34,7 @@ void main()
         }
         else
         {
-            FragColor = texture( iChannel0, uv );
+            FragColor = ( iNormal ? texture( iChannel0, uv ) : texture( iChannel2, uv ) );
         }
     }
 }

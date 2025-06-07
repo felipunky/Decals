@@ -1,8 +1,10 @@
 TODOs:
+	-Add support for WASM uploading of decals normals
+	-Implement a way to fade when the decals are too stretched:
+		-See https://madebyevan.com/shaders/curvature/
 	-Add normal mapping support from decals
 	-Parallax Occlusion Mapping
 	-Refactor the decal upload
-	-Play with the smoothstep for the Decal's SDF
 	-Optimize it for the web
 	-Pass shader string to include layout:
 		-We need this to be able to use RenderDoc to debug shaders.
@@ -22,6 +24,9 @@ TODOs:
 	-Investigate whether or not the textures should be linearized (albedo normal).
 
 DONEs:
+	-Add normal mapping support from decals
+	-Play with the smoothstep for the Decal's SDF
+
 	-Pass the vec2 for the light from CPU so there's no need to recompute on the vertex shader the light position
 	-Add a parameter to control the downsampling factor for the JFA
 	-Implement JFA for proper alpha cutting

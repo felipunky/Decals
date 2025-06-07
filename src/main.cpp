@@ -215,6 +215,7 @@ enum SHOW_TEXTURES
 {
     CURRENT_MODEL,
     TEXTURE_SPACE,
+    NORMALS,
     JFA
 };
 SHOW_TEXTURES showTextures = CURRENT_MODEL;
@@ -287,6 +288,7 @@ struct Material
     unsigned int metallic;
     unsigned int ao;
     unsigned int decalBaseColor;
+    unsigned int decalNormal;
 };
 
 struct OpenGLObject
@@ -323,7 +325,8 @@ struct ModelFileNames
                 roughness,
                 metallic,
                 ao,
-                decalBaseColor;
+                decalBaseColor,
+                decalNormal;
 };
 
 std::vector<ModelFileNames> fileNames(2);
@@ -1840,18 +1843,21 @@ void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
     std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
 #endif
 
-    textureSpaceFramebuffer.textures = std::vector<unsigned int>(1);
+    textureSpaceFramebuffer.textures = std::vector<unsigned int>(2);
 
-    glGenTextures(1, &(textureSpaceFramebuffer.textures[0]));
-    glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0], 0);
+    for (uint8_t i = 0u; i < (uint8_t)textureSpaceFramebuffer.textures.size(); ++i)
+    {
+        glGenTextures(1, &(textureSpaceFramebuffer.textures[i]));
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
+    }
 
     // Set the list of draw buffers.
-    unsigned int drawBuffersFBO[1] = {GL_COLOR_ATTACHMENT0};
-    glDrawBuffers(1, drawBuffersFBO); // "1" is the size of DrawBuffers
+    unsigned int drawBuffersFBO[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, drawBuffersFBO); // "1" is the size of DrawBuffers
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Texture Space Framebuffer not complete!" << std::endl;
@@ -1864,7 +1870,7 @@ void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
     // deferredPass.setInt("gRoughness", 3);
     // deferredPass.setInt("gAO",        4);
     /** End Texture Space Buffer **/
-    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " texture: " << textureSpaceFramebuffer.textures[0] << std::endl;
+    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " albedo texture: " << textureSpaceFramebuffer.textures[0] << " normal texture: " << textureSpaceFramebuffer.textures[1] << std::endl;
 }
 
 void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY, const FrameBufferTextureParams& frameBufferTextureParams)
@@ -2021,21 +2027,25 @@ int main()
     fileNames[0].baseColor = "Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
     fileNames[0].normal = "Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
     fileNames[0].decalBaseColor = "Assets/Textures/Watchmen.png";
+    fileNames[0].decalNormal = "Assets/Textures/Watchmen_normal.png";
 
     fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
     fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "Assets/Textures/Watchmen_2.png";
+    fileNames[1].decalNormal = "Assets/Textures/Watchmen_2_normal.png";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
     fileNames[0].normal = "../Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
     fileNames[0].decalBaseColor = "../Assets/Textures/Watchmen.png";
+    fileNames[0].decalNormal = "../Assets/Textures/Watchmen_normal.png";
 
     fileNames[1].mesh = "../Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
     fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "../Assets/Textures/Watchmen_2.png";
+    fileNames[1].decalNormal = "../Assets/Textures/Watchmen_2_normal.png";
     /*fileNames[2].mesh = "../Assets/RV/source/RV.glb";
     fileNames[2].baseColor = "../Assets/RV/textures/clay_baseColor.png";
     fileNames[2].normal = "../Assets/Clay/textures/map_normals.jpg";*/
@@ -2107,10 +2117,11 @@ int main()
      *  Start Create Decals Texture 
      */
     decalsPass.use();
-
-    textureWrapParams = Shader::CLAMP_TO_EDGE;
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
     decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iChannel0", 1);
-    decalsPass.setInt("iChannel1", 0);
+    decalsPass.createTexture(&(modelData.material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iChannel2", 4);
+    decalsPass.setInt("iChannel3", 5);
     decalsPass.setFloat("bias", computeBiasDepthComparison(modelData));
     decalsPass.setInt("iDepth", 2);
     decalsPass.setInt("iSDF", 3);
@@ -2170,6 +2181,7 @@ int main()
     fullScreenPass.use();
     fullScreenPass.setInt("iChannel0", 0);
     fullScreenPass.setInt("iChannel1", 1);
+    fullScreenPass.setInt("iChannel2", 2);
     renderQuad();
     /**
      * End Full Screen Quad
@@ -2743,7 +2755,7 @@ void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, framebuffer.textures[0], 0);
 }
 
-void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName, const std::string& fileNameDecal)
+void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName)
 {
     shader.use();
     glDeleteTextures(1, &(framebuffer.textures[0]));
@@ -2798,12 +2810,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
     shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt);
-    
-    //textureWrapParams = Shader::CLAMP_TO_EDGE;
-    glDeleteTextures(1, &(modelData.material.decalBaseColor));
-    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iChannel0", 1);
 
-    decalsPass.setInt("iChannel1", 0);
     FrameBufferTextureParams frameBufferTextureParams;
     frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
     frameBufferTextureParams.FORMAT = GL_RGBA;
@@ -2811,12 +2818,22 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams);
 }
 
-void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal, const std::string& fileNameDecal)
+void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal, const std::string& fileNameDecal, const std::string& fileNameDecalNormal)
 {
     ClearModelVertexData(modelData);
     modelData = newModelData;
-    regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor, fileNameDecal);
-    regenerateTexture(shader, modelData, NORMAL, framebuffer, fileNameNormal, fileNameDecal);
+    regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor);
+    regenerateTexture(shader, modelData, NORMAL, framebuffer, fileNameNormal);
+
+    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
+    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR;
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
+    glDeleteTextures(1, &(modelData.material.decalBaseColor));
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iChannel0", 1);
+    glDeleteTextures(1, &(modelData.material.decalNormal));
+    decalsPass.createTexture(&(modelData.material.decalNormal), fileNameDecalNormal, textureWrapParams, textureSampleParams, "iChannel2", 4);
+    
     float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
     CreateBOs(modelData);
@@ -2983,7 +3000,7 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
-    static const char* textureTypes[]{ "Model", "Texture Space", "JFA" };
+    static const char* textureTypes[]{ "Model", "Albedo", "Normals", "JFA" };
     static const char* selectedTexture = textureTypes[0];
     bool textureSelectionDirty = ImGui::BeginCombo("Display", selectedTexture, 0);
     //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
@@ -3007,9 +3024,13 @@ void main_loop()
         {
             showTextures = CURRENT_MODEL;
         }
-        else if (strcmp(selectedTexture, "Texture Space") == 0)
+        else if (strcmp(selectedTexture, "Albedo") == 0)
         {
             showTextures = TEXTURE_SPACE;
+        }
+        else if (strcmp(selectedTexture, "Normals") == 0)
+        {
+            showTextures = NORMALS;
         }
         else
         {
@@ -3080,7 +3101,7 @@ void main_loop()
         }
         if (recomputeModel)
         {
-            regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].decalBaseColor);
+            regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].decalBaseColor, fileNames[pickModel].decalNormal);
             
             frameJFA = 0;
             downloadImage = 1u;
@@ -3104,7 +3125,7 @@ void main_loop()
             light.toggle = !light.toggle;
         }
     }
-    if (showTextures == TEXTURE_SPACE)
+    if (showTextures == TEXTURE_SPACE || showTextures == NORMALS)
     {
         ImGui::SliderInt("Scale Texture Space", &fullScreenPassRepeat, 1, 10);
     }
@@ -3118,7 +3139,7 @@ void main_loop()
         downloadImage = 1u;
         regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
     }
-    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE)
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS)
     {
         if (ImGui::Button("Show Blend"))
         {
@@ -3140,7 +3161,7 @@ void main_loop()
         ImGui::SliderFloat("Smoothness", &smoothAlpha, 0.0f, 1.0f);
         ImGui::SliderInt("Pixel Width Alpha", &distanceWidthJFA, 1, 32);
     }
-    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE)
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS)
     {
         glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
         ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
@@ -3172,9 +3193,6 @@ void main_loop()
         {
             showHitPoint = !showHitPoint;
         }
-    }
-    if (showTextures == CURRENT_MODEL)
-    {
         for (int i = 0; i < 1; ++i)
         {
             ImGuizmo::PushID(i);
@@ -3320,18 +3338,35 @@ void main_loop()
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
     textureWrapParams = Shader::REPEAT;
     decalsPass.textureWrap(textureWrapParams);
+    
     glActiveTexture(GL_TEXTURE1);
+    textureWrapParams = Shader::CLAMP_TO_EDGE;
+    textureSampleParams = Shader::LINEAR_MIPS;
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+    
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     decalsPass.textureWrap(textureWrapParams);
     textureSampleParams = Shader::NEAREST;
     decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
+    
     //textureSampleParams = Shader::LINEAR;
     //decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
+
+    glActiveTexture(GL_TEXTURE4);
+    textureWrapParams = Shader::CLAMP_TO_EDGE;
+    textureSampleParams = Shader::LINEAR_MIPS;
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
+
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         
     glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3358,7 +3393,7 @@ void main_loop()
 #endif
     }
     /** End Decal Pass **/
-    if (showTextures == TEXTURE_SPACE || showTextures == JFA)
+    if (showTextures == TEXTURE_SPACE || showTextures == NORMALS || showTextures == JFA)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(quadVAO);
@@ -3378,15 +3413,23 @@ void main_loop()
         textureSampleParams = Shader::NEAREST;
         fullScreenPass.textureSample(textureSampleParams);
         
+        // Albedo
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+        
+        // SDF
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
+
+        // Normals
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
         
         fullScreenPass.setInt("iScale", fullScreenPassRepeat);
         
         fullScreenPass.setBool("iAlpha", drawJFA);
         fullScreenPass.setFloat("iSmoothness", smoothAlpha * 0.5);
+        fullScreenPass.setBool("iNormal", (showTextures == NORMAL ? true : false));
          
         glViewport(0, 0, WIDTH, HEIGHT);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3418,12 +3461,14 @@ void main_loop()
         deferredPass.setMat4("projection", projectionHalf);
         deferredPass.setMat4("view", view);
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-        textureSampleParams = Shader::LINEAR_MIPS;
+
+        // Normal
+        textureSampleParams = Shader::LINEAR;
         deferredPass.textureSample(textureSampleParams);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
-        textureSampleParams = Shader::NEAREST;
-        deferredPass.textureSample(textureSampleParams);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+
+        // Albedo
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         // glActiveTexture(GL_TEXTURE2);
@@ -3528,10 +3573,17 @@ void main_loop()
                                                     -0.993572, 0.021407, -0.111162, 0.000000,
                                                     -0.064962, 0.388481, -4.221102, 1.000000));*/
             deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+            
+            // Normal
+            textureSampleParams = Shader::LINEAR;
+            deferredPass.textureSample(textureSampleParams);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+
+            // Albedo
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+
             // glActiveTexture(GL_TEXTURE2);
             // glBindTexture(GL_TEXTURE_2D, material.metallic);
             // glActiveTexture(GL_TEXTURE3);
@@ -3566,10 +3618,17 @@ void main_loop()
                                                     0.0, 0.0,  1.0, 0.0,
                                                     0.0, 0.0, -1.0, 1.0));*/
             deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+            
+            // Normal
+            textureSampleParams = Shader::LINEAR;
+            deferredPass.textureSample(textureSampleParams);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+
+            // Albedo
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+
             // glActiveTexture(GL_TEXTURE2);
             // glBindTexture(GL_TEXTURE_2D, material.metallic);
             // glActiveTexture(GL_TEXTURE3);
