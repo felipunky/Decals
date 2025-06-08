@@ -64,11 +64,12 @@ int newVerticesSize;
 int flipAlbedo = 0;
 uint8_t reload = 0u;
 uint8_t downloadImage = 1u;
-std::vector<uint8_t> decalImageBuffer;
-std::vector<uint8_t> decalResult;
+std::vector<uint8_t> decalAlbedoImageBuffer,
+                     decalNormalImageBuffer;
+std::vector<uint8_t> decalAlbedoResult,
+                     decalNormalResult;
 uint16_t widthDecal  = 1024u,
          heightDecal = 1024u,
-         changeDecal = 1u,
          widthAlbedo,
          heightAlbedo,
          changeAlbedo = 0u;
@@ -244,12 +245,12 @@ std::string fileToString(const std::string& fileName)
     return contents;
 }
 
-std::vector<uint8_t> uploadImage()
+std::vector<uint8_t> uploadImage(int attachment)
 {
     unsigned int bufferSize = 4 * geometryPass.Width * geometryPass.Height;
     std::vector<uint8_t> buffer(bufferSize);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glReadBuffer(GL_COLOR_ATTACHMENT0 + attachment);
     glReadPixels(0, 0, geometryPass.Width, geometryPass.Height, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
     return buffer;
 }
@@ -525,12 +526,10 @@ extern "C"
         #endif
         decalsPass.Width  = buf[0];
         decalsPass.Height = buf[1];
-        changeDecal = buf[2];
 #ifdef OPTIMIZE
 #else
         std::cout << "Decal Albedo Width: "  << +decalsPass.Width  << std::endl;
         std::cout << "Decal Albedo Height: " << +decalsPass.Height << std::endl;
-        std::cout << "Clicked :"             << +changeDecal     << std::endl;
 #endif
     }
     EMSCRIPTEN_KEEPALIVE
@@ -545,7 +544,7 @@ extern "C"
         glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
             
         frameJFA = 0;
-        decalsPass.createTextureFromFile(&(modelData.material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
+        decalsPass.createTextureFromFile(&(modelData.material.decalNormal), buf, decalsPass.Width, decalsPass.Height, "iChannel2", 4);
         regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
                  /* In and Out */ modelData, 
@@ -561,12 +560,10 @@ extern "C"
         #endif
         decalsPass.Width  = buf[0];
         decalsPass.Height = buf[1];
-        changeDecal = buf[2];
 #ifdef OPTIMIZE
 #else
         std::cout << "Decal Normal Width: "  << +decalsPass.Width  << std::endl;
         std::cout << "Decal Normal Height: " << +decalsPass.Height << std::endl;
-        std::cout << "Clicked :"             << +changeDecal     << std::endl;
 #endif
     }
     EMSCRIPTEN_KEEPALIVE
@@ -647,15 +644,46 @@ extern "C"
 #endif
     }
     EMSCRIPTEN_KEEPALIVE
-    uint8_t* downloadDecal(uint8_t *buf, int bufSize) 
+    uint8_t* downloadDecalAlbedo(uint8_t *buf, int bufSize) 
     {
-        if (decalResult.size() > 0)
+        if (decalAlbedoResult.size() > 0)
         {
 #ifdef OPTIMIZE
 #else
             std::cout << "Successful loading the image into data!" << std::endl;
 #endif
-            uint8_t* result = &decalResult[0];
+            uint8_t* result = &decalAlbedoResult[0];
+            return result;
+        }
+        else
+        {
+#ifdef OPTIMIZE
+#else
+            std::cout << "Unsuccesful loading the image into data!" << std::endl;
+#endif
+            /*int size = 4 * geometryPass.Width * geometryPass.Height;
+            uint8_t values[size];
+    
+            for (int i = 0; i < size; i++) 
+            {
+                values[i] = 0u;
+            }
+        
+            auto arrayPtr = &values[0];
+            return arrayPtr;*/
+            return buf;
+        }
+    }
+    EMSCRIPTEN_KEEPALIVE
+    uint8_t* downloadDecalNormal(uint8_t *buf, int bufSize) 
+    {
+        if (decalNormalResult.size() > 0)
+        {
+#ifdef OPTIMIZE
+#else
+            std::cout << "Successful loading the image into data!" << std::endl;
+#endif
+            uint8_t* result = &decalNormalResult[0];
             return result;
         }
         else
@@ -1594,7 +1622,7 @@ void reloadModel(ModelData& modelData)
 void recomputeDecalBaseColorTexture()
 {
     //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
-    //decalsPass.createTextureFromFile(&decalTexture, decalImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
+    //decalsPass.createTextureFromFile(&decalTexture, decalAlbedoImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
 #ifdef OPTIMIZE
 #else
     std::cout << "Changing texture" << std::endl;
@@ -1613,14 +1641,54 @@ void recomputeDecalBaseColorTexture()
 
     // Get the texture format automatically.
     auto format = GL_RGBA;    
-    glTexImage2D(GL_TEXTURE_2D, 0, format, decalsPass.Width, decalsPass.Height, 0, format, GL_UNSIGNED_BYTE, decalImageBuffer.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, format, decalsPass.Width, decalsPass.Height, 0, format, GL_UNSIGNED_BYTE, decalAlbedoImageBuffer.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     // Clear the data.
-    decalImageBuffer.clear();
+    decalAlbedoImageBuffer.clear();
 
     // Bind the uniform sampler.
     decalsPass.use();
     decalsPass.setInt("iChannel0", 1);
+
+    // Update decal through triggering the ray trace.
+    updateViewMatrix();
+    mousePositionX = WIDTH / 2;
+    mousePositionY = HEIGHT / 2;
+    rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+             /* In and Out */ modelData, 
+             projection, view, false);
+}
+
+void recomputeDecalNormalTexture()
+{
+    //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
+    //decalsPass.createTextureFromFile(&decalTexture, decalAlbedoImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
+#ifdef OPTIMIZE
+#else
+    std::cout << "Changing texture" << std::endl;
+#endif
+    flip = 1;
+    glGenTextures(1, &(modelData.material.decalNormal));
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
+
+    // In an ideal world this should be exposed as input params to the function.
+    // Texture wrapping params.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Texture filtering params.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Get the texture format automatically.
+    auto format = GL_RGBA;    
+    glTexImage2D(GL_TEXTURE_2D, 0, format, decalsPass.Width, decalsPass.Height, 0, format, GL_UNSIGNED_BYTE, decalNormalImageBuffer.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    // Clear the data.
+    decalNormalImageBuffer.clear();
+
+    // Bind the uniform sampler.
+    decalsPass.use();
+    decalsPass.setInt("iChannel3", 5);
 
     // Update decal through triggering the ray trace.
     updateViewMatrix();
@@ -2912,9 +2980,13 @@ void main_loop()
         = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
     //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
 
-    if (decalImageBuffer.size() > 0)
+    if (decalAlbedoImageBuffer.size() > 0)
     {
         recomputeDecalBaseColorTexture();
+    }
+    if (decalNormalImageBuffer.size() > 0)
+    {
+        recomputeDecalNormalTexture();
     }
 
     /**
@@ -3425,7 +3497,8 @@ void main_loop()
 
     if (downloadImage == 1u)
     {
-        decalResult = uploadImage();
+        decalAlbedoResult = uploadImage(0);
+        decalNormalResult = uploadImage(1);
         // counter = 0;
         downloadImage = 0u;
 
@@ -3710,6 +3783,5 @@ void main_loop()
     frame++;
     frameJFA++;
     counter++;
-    changeDecal = 0u;
     frameIsEven = !frameIsEven;
 }

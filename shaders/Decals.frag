@@ -3,8 +3,16 @@ precision highp float;
 in vec3 WorldPos;
 in vec2 TexCoords;
 
+// Uncomment the following for Mac
+#define __EMSCRIPTEN__
+
+#ifdef __EMSCRIPTEN__
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Normal;
+#else
+out vec4 FragColor;
+out vec4 Normal;
+#endif
 
 uniform mat4 model;                                        
 uniform mat4 view;                                         

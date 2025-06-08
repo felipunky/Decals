@@ -37,34 +37,6 @@
             let original = true;
             window.onload = function()
             {   
-                const loadImageDecalNormal = src =>
-                {
-                    img = new Image()
-                    img.addEventListener("load", () => 
-                    {
-                        cv = document.createElement("canvas");
-                        cv.id = "previewCanvas";
-                        cv.height = img.height;
-                        cv.width = img.width;
-                        clicked = 1;
-
-                        sizeData = [cv.width, cv.height, clicked];
-
-                        previewCanvasContext = cv.getContext("2d");
-                        previewCanvasContext.drawImage(img, 0, 0);
-
-                        //console.log("Passing image data to WASM");
-
-                        const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
-                        ccallArrays("passSizeDecalNormal", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
-                        ccallArrays("loadDecalNormal", null, ["array"], [imageData], {heapIn: "HEAPU8"});
-                        //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
-                        clicked = 0;
-                        sizeData[2] = clicked;
-                    })
-                    img.src = src;
-                }
-
                 const loadImageDecalAlbedo = src => 
                 {
                     img = new Image()
@@ -93,6 +65,34 @@
                     img.src = src;
                 }
 
+                const loadImageDecalNormal = src => 
+                {
+                    img = new Image()
+                    img.addEventListener("load", () => 
+                    {
+                        cv = document.createElement("canvas");
+                        cv.id = "previewCanvas";
+                        cv.height = img.height;
+                        cv.width = img.width;
+                        clicked = 1;
+
+                        sizeData = [cv.width, cv.height, clicked];
+
+                        previewCanvasContext = cv.getContext("2d");
+                        previewCanvasContext.drawImage(img, 0, 0);
+
+                        //console.log("Passing image data to WASM");
+
+                        const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
+                        ccallArrays("passSizeDecalNormal", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
+                        ccallArrays("loadDecalNormal", null, ["array"], [imageData], {heapIn: "HEAPU8"});
+                        //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
+                        clicked = 0;
+                        sizeData[2] = clicked;
+                    })
+                    img.src = src;
+                }
+
                 const loadImageAlbedo = src => 
                 {
                     let imgAlbedo = new Image()
@@ -105,7 +105,7 @@
                         widthAlbedo = cv.width;
                         heightAlbedo = cv.height;
 
-                        flipAlbedo = 1;//isGLTF ? 0 : 1;
+                        flipAlbedo = isGLTF ? 0 : 1;
                         sizeData = [cv.width, cv.height, flipAlbedo];
 
                         previewCanvasContext = cv.getContext("2d");
@@ -120,7 +120,6 @@
                         //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
                         sizeData[2] = clicked;
                         //console.log("You are loading the Albedo texture...");
-                        flipAlbedo = isGLTF ? 0 : 1;
                     });
                     imgAlbedo.src = src;
                 }
@@ -148,6 +147,18 @@
                     });
                     imgNormal.src = src;
                 }
+
+                // Decal Albedo Upload
+                const uploadDecalAlbedo = document.getElementById("uploadDecalAlbedo");
+                uploadDecalAlbedo.addEventListener("change", () => {
+                    loadImageDecalAlbedo(URL.createObjectURL(event.target.files[0]))
+                })
+
+                // Decal Albedo Upload
+                const uploadDecalNormal = document.getElementById("uploadDecalNormal");
+                uploadDecalNormal.addEventListener("change", () => {
+                    loadImageDecalNormal(URL.createObjectURL(event.target.files[0]))
+                })
 
                 function flip(imageData, ctx)
                 {
@@ -201,40 +212,13 @@
                     }
                 };
 
-                function UpdateTexture()
-                {
-                    let downloadImageArr = [downloadImage, 1, 2];
-                    _flipDecalTrigger();
-                    console.log("Flippity!");
-                }
-                function ViewTexture()
-                {
-                    let downloadImageArray = [downloadImage, 2, 3];
-                    res = ccallArrays("downloadDecal", "array", ["array"], [downloadImageArray], 
-                                    {heapIn: "HEAPU8", heapOut: "HEAPU8", returnArraySize: 4 * widthAlbedo * heightAlbedo});
-                }
-
                 window.oncontextmenu = function(e) 
                 {
                     e.preventDefault();
-                    //downloadImage = 1;
-                    //console.log("Hey");
-                    //UpdateTexture();
                 }
 
-                // Decal Albedo input
-                const uploadDecalAlbedo = document.getElementById("uploadDecalAlbedo");
-                uploadDecalAlbedo.addEventListener("change", () => {
-                    loadImageDecalAlbedo(URL.createObjectURL(event.target.files[0]))
-                })
-
-                // Decal Normal input
-                const uploadDecalNormal = document.getElementById("uploadDecalNormal");
-                uploadDecalNormal.addEventListener("change", () => {
-                    loadImageDecalNormal(URL.createObjectURL(event.target.files[0]))
-                })
-
                 // Albedo input
+                // Image input
                 const albedoInput = document.getElementById("uploadAlbedo");
                 albedoInput.addEventListener("change", () => {
                     loadImageAlbedo(URL.createObjectURL(event.target.files[0]));
@@ -317,11 +301,13 @@
                     ccallArrays("passGLB", null, ["array"], [bytes], {heapIn: "HEAPU8"});
                 }
 
-                document.getElementById('download').addEventListener("click", function(e) 
+                document.getElementById('downloadAlbedo').addEventListener("click", function(e) 
                 {
                     // Base Color.
                     _flipDecalTrigger();
-                    ViewTexture();
+                    let downloadImageArray = [downloadImage, 2, 3];
+                    res = ccallArrays("downloadDecalAlbedo", "array", ["array"], [downloadImageArray], 
+                                    {heapIn: "HEAPU8", heapOut: "HEAPU8", returnArraySize: 4 * widthAlbedo * heightAlbedo});
                     console.log(`Width: ${widthAlbedo} Height: ${heightAlbedo}`);
                     console.log(res.length);
                     drawArray(res, widthAlbedo, heightAlbedo);
@@ -331,40 +317,25 @@
                     a.download = 'Albedo.png';
                     document.body.appendChild(a);
                     a.click();
-
-                    /*
-                    // Roughness.
-                    a.href = "Assets/t-shirt-lp/textures/T_shirt_roughness.jpg";
-                    a.download = "T_shirt_roughness.jpg";
-                    a.click();
-
-                    // Normals.
-                    a.href = "Assets/t-shirt-lp/textures/T_shirt_normal.png";
-                    a.download = "T_shirt_normal.png";
-                    a.click();
-
-                    // Ambient Occlusion.
-                    a.href = "Assets/t-shirt-lp/textures/T_shirt_AO.jpg";
-                    a.download = "T_shirt_AO.jpg";
-                    a.click();
-
-                    // Mesh.
-                    downloadUrl("Assets/t-shirt-lp/source/Shirt.gltf");*/
                 });
 
-                function downloadUrl(url)
+                document.getElementById('downloadNormal').addEventListener("click", function(e) 
                 {
-                    window.open(url, '_self');
-                }
-
-                function downloadImage(url, name)
-                {
+                    // Base Color.
+                    _flipDecalTrigger();
+                    let downloadImageArray = [downloadImage, 2, 3];
+                    res = ccallArrays("downloadDecalNormal", "array", ["array"], [downloadImageArray], 
+                                    {heapIn: "HEAPU8", heapOut: "HEAPU8", returnArraySize: 4 * widthAlbedo * heightAlbedo});
+                    console.log(`Width: ${widthAlbedo} Height: ${heightAlbedo}`);
+                    console.log(res.length);
+                    drawArray(res, widthAlbedo, heightAlbedo);
+                    var dataURL = cvDrawImg.toDataURL("image/png", 1.0);
                     var a = document.createElement('a');
-                    a.href = url;
-                    a.download = name;
+                    a.href = dataURL;
+                    a.download = 'Normal.png';
                     document.body.appendChild(a);
                     a.click();
-                }
+                });
 
                 /** Start pass window size.**/
 
@@ -473,7 +444,8 @@
         <input id="uploadAlbedo" style="display:none" type="file" accept="image/*" value="./image.png">
         <input id="uploadNormal" style="display:none" type="file" accept="image/*" value="./image.png">
         <input id="uploadMesh" style="display:none" type="file" accept=".obj, .gltf, .glb">
-        <button class="button" id="download">Download Albedo</button>
+        <button class="button" id="downloadAlbedo">Download Albedo</button>
+        <button class="button" id="downloadNormal">Download Normal</button>
     </div>
 
     <div id="dropZone">
