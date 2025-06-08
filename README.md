@@ -53,15 +53,17 @@ WASM implementation of a decal generator. Live demo here at: https://www.felipeg
   cmake --build .
   
 * Emscripten:
- 
-  emcmake cmake ..
   
-  On Windows:
+  On Windows (Make sure to have Ninja installed):
   
-   cmake -G Ninja --build .
+   emcmake cmake -G Ninja .
    
   On Mac:
-  
+
+   emcmake cmake .
+
+  Then run:
+
    cmake --build .
    
 Note you have to have installed the dependencies needed which are added as git submodules, you also need SDL to be available for CMake.
