@@ -28,12 +28,6 @@ void main()
   {
     texCoords.y = 1. - texCoords.y;
   }
-  
-  // vec3 T = normalize(vec3(model * vec4(VertexTangents.xyz, 0.0)));
-  // vec3 N = normalize(vec3(model * vec4(VertexNormals,      0.0)));
-  // vec3 B = cross(N, T) * VertexTangents.w;
-
-  // TBN = mat3(T, B, N);
           
   vec4 worldPos = model * vec4(VertexPosition.xyz, 1.);    
   vec4 objPos = projection * view * worldPos;    

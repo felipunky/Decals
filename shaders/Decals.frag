@@ -3,8 +3,8 @@ precision highp float;
 in vec3 WorldPos;
 in vec2 TexCoords;
 
-out vec4 FragColor;
-out vec4 Normal;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 Normal;
 
 uniform mat4 model;                                        
 uniform mat4 view;                                         

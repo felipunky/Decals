@@ -1,4 +1,8 @@
 TODOs:
+	-Fix the ComputeTangents functions to work with obj's with the hash map
+	-Add zooming parameters for the texture debugging modes
+	-Fix issues with doing SDF blending on normals
+	-Fix albedo textures being flipped when uploaded from JS
 	-Add support for WASM uploading of decals normals
 	-Implement a way to fade when the decals are too stretched:
 		-See https://madebyevan.com/shaders/curvature/
@@ -24,6 +28,8 @@ TODOs:
 	-Investigate whether or not the textures should be linearized (albedo normal).
 
 DONEs:
+	-Fix GL_INVALID_ENUM: glTexParameteri: Texture filter not recognized.
+
 	-Add normal mapping support from decals
 	-Play with the smoothstep for the Decal's SDF
 

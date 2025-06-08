@@ -307,8 +307,8 @@ public:
             }
             case 1:
             {
-                textureSampleMin = GL_LINEAR;
-                textureSampleMag = GL_LINEAR_MIPMAP_LINEAR;
+                textureSampleMin = GL_LINEAR_MIPMAP_LINEAR;
+                textureSampleMag = GL_LINEAR;
                 break;
             }
             case 2:

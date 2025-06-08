@@ -33,10 +33,14 @@
             let cvDrawImg;
             let meshData;
             let flipAlbedo = 0;
-            let isGLTF = false;
-            let original = false;
+            let isGLTF = true;
+            let original = true;
             window.onload = function()
             {   
+                function onLoadImage()
+                {
+                    
+                }
                 const loadImage = src => 
                 {
                     img = new Image()
@@ -55,7 +59,12 @@
 
                         //console.log("Passing image data to WASM");
 
-                        passToWASM();
+                        const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
+                        ccallArrays("passSize", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
+                        ccallArrays("load", null, ["array"], [imageData], {heapIn: "HEAPU8"});
+                        //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
+                        clicked = 0;
+                        sizeData[2] = clicked;
                     })
                     img.src = src;
                 }
@@ -71,7 +80,8 @@
                         cv.width = imgAlbedo.width;
                         widthAlbedo = cv.width;
                         heightAlbedo = cv.height;
-                        flipAlbedo = 1;
+
+                        flipAlbedo = isGLTF ? 0 : 1;
                         sizeData = [cv.width, cv.height, flipAlbedo];
 
                         previewCanvasContext = cv.getContext("2d");
@@ -86,7 +96,6 @@
                         //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
                         sizeData[2] = clicked;
                         //console.log("You are loading the Albedo texture...");
-                        flipAlbedo = isGLTF ? 0 : 1;
                     });
                     imgAlbedo.src = src;
                 }
@@ -115,19 +124,9 @@
                     imgNormal.src = src;
                 }
 
-                function passToWASM()
-                {
-                    const imageData = previewCanvasContext.getImageData(0, 0, cv.width, cv.height).data;
-                    ccallArrays("passSize", null, ["array"], [sizeData], {heapIn: "HEAPU16"});
-                    ccallArrays("load", null, ["array"], [imageData], {heapIn: "HEAPU8"});
-                    //previewCanvasContext.clearRect(0, 0, cv.width, cv.height);
-                    clicked = 0;
-                    sizeData[2] = clicked;
-                } 
-
                 // Image input
-                const fileInput = document.getElementById("fileInput");
-                fileInput.addEventListener("change", () => {
+                const uploadDecalAlbedo = document.getElementById("uploadDecalAlbedo");
+                uploadDecalAlbedo.addEventListener("change", () => {
                     loadImage(URL.createObjectURL(event.target.files[0]))
                 })
 
@@ -236,18 +235,21 @@
                         {
                             console.log("Reading obj file");
                             readObjFile(meshFile);
+                            isGLTF = false;
                             break;
                         }
                         case ("glb"):
                         {
                             console.log("Reading glb file");
                             readGLBFile(meshFile);
+                            isGLTF = true;
                             break;
                         }
                         case ("gltf"):
                         {
                             console.log("Reading gltf file");
                             readGLTFFile(meshFile);
+                            isGLTF = true;
                             break;
                         }
                         default:
@@ -431,14 +433,16 @@
     </body>
 
     <div class="buttonContainer">
-        <button class="button" onclick="document.getElementById('fileInput').click()">Upload Decal</button>
+        <button class="button" onclick="document.getElementById('uploadDecalAlbedo').click()">Upload Decal Albedo</button>
+        <button class="button" onclick="document.getElementById('uploadDecalNormal').click()">Upload Decal Normal</button>
         <button class="button" onclick="document.getElementById('uploadAlbedo').click()">Upload Albedo</button>
-        <input id="fileInput" style="display:none" type="file" accept="image/*" value="./image.png">
         <button class="button" onclick="document.getElementById('uploadNormal').click()">Upload Normal</button>
         <button class="button" onclick="document.getElementById('uploadMesh').click()">Upload Mesh</button>
-        <input id="uploadMesh" style="display:none" type="file" accept=".obj, .gltf, .glb">
+        <input id="uploadDecalAlbedo" style="display:none" type="file" accept="image/*" value="./image.png">
+        <input id="uploadDecalNormal" style="display:none" type="file" accept="image/*" value="./image.png">
         <input id="uploadAlbedo" style="display:none" type="file" accept="image/*" value="./image.png">
         <input id="uploadNormal" style="display:none" type="file" accept="image/*" value="./image.png">
+        <input id="uploadMesh" style="display:none" type="file" accept=".obj, .gltf, .glb">
         <button class="button" id="download">Download Albedo</button>
     </div>
 

@@ -18,7 +18,6 @@ uniform sampler2D gAO;
 uniform vec3 viewPos;
 uniform float iTime;
 uniform float iFlipAlbedo;
-uniform int iFlipper;
 uniform int iNormals;
 
 const float PI = 3.14159265359;
@@ -89,11 +88,6 @@ void main()
     {
         vec3 L = normalize(TangentLightPos - TangentFragPos);
         vec3 V = normalize(TangentViewPos - TangentFragPos);
-
-        if (iFlipper == 1)
-        {
-            texCoordsAlbedo.y = 1. - texCoordsAlbedo.y;
-        }
 
         vec3 N = getNormalFromMap(texCoordsAlbedo);
         vec3 halfWayVector = normalize(L + V);

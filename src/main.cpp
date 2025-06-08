@@ -498,13 +498,13 @@ extern "C"
         isGLTF = false;
     }
     EMSCRIPTEN_KEEPALIVE
-    void load(uint8_t* buf, int bufSize) 
+    void loadDecalAlbedo(uint8_t* buf, int bufSize) 
     {
         //printf("[WASM] Loading Texture \n");
 #ifdef OPTIMIZE
 #else
-        std::cout << "Reading decal image!" << std::endl;
-        std::cout << "Decal buffer size: " << bufSize << std::endl;
+        std::cout << "Reading decal albedo image!" << std::endl;
+        std::cout << "Decal albedo buffer size: " << bufSize << std::endl;
 #endif
         glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
             
@@ -517,7 +517,43 @@ extern "C"
         downloadImage = 1u;
     }
     EMSCRIPTEN_KEEPALIVE
-    void passSize(uint16_t* buf, int bufSize)
+    void passSizeDecalAlbedo(uint16_t* buf, int bufSize)
+    {
+#ifdef OPTIMIZE
+#else
+        std::cout << "Reading decal albedo image size!" << std::endl;
+        #endif
+        decalsPass.Width  = buf[0];
+        decalsPass.Height = buf[1];
+        changeDecal = buf[2];
+#ifdef OPTIMIZE
+#else
+        std::cout << "Decal Albedo Width: "  << +decalsPass.Width  << std::endl;
+        std::cout << "Decal Albedo Height: " << +decalsPass.Height << std::endl;
+        std::cout << "Clicked :"             << +changeDecal     << std::endl;
+#endif
+    }
+    EMSCRIPTEN_KEEPALIVE
+    void loadDecalNormal(uint8_t* buf, int bufSize) 
+    {
+        //printf("[WASM] Loading Texture \n");
+#ifdef OPTIMIZE
+#else
+        std::cout << "Reading decal normal image!" << std::endl;
+        std::cout << "Decal normal buffer size: " << bufSize << std::endl;
+#endif
+        glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
+            
+        frameJFA = 0;
+        decalsPass.createTextureFromFile(&(modelData.material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
+        regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+        rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
+                 /* In and Out */ modelData, 
+                 projection, view, false);
+        downloadImage = 1u;
+    }
+    EMSCRIPTEN_KEEPALIVE
+    void passSizeDecalNormal(uint16_t* buf, int bufSize)
     {
 #ifdef OPTIMIZE
 #else
@@ -528,9 +564,9 @@ extern "C"
         changeDecal = buf[2];
 #ifdef OPTIMIZE
 #else
-        std::cout << "Decal Width: "  << +decalsPass.Width  << std::endl;
-        std::cout << "Decal Height: " << +decalsPass.Height << std::endl;
-        std::cout << "Clicked :"      << +changeDecal     << std::endl;
+        std::cout << "Decal Normal Width: "  << +decalsPass.Width  << std::endl;
+        std::cout << "Decal Normal Height: " << +decalsPass.Height << std::endl;
+        std::cout << "Clicked :"             << +changeDecal     << std::endl;
 #endif
     }
     EMSCRIPTEN_KEEPALIVE
@@ -580,7 +616,7 @@ extern "C"
         std::cout << "Reading normal from file!" << std::endl;
         std::cout << "Normal buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(modelData.material.normal), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
+        geometryPass.createTextureFromFile(&(modelData.material.normal), buf, geometryPass.Width, geometryPass.Height, "Normal", 1);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeNormal(uint16_t* buf, int bufSize)
@@ -1235,8 +1271,8 @@ void ObjLoader(std::string inputFile, ModelData& modelData)
             glm::vec2 textureCoordinates{
                 attrib.texcoords[2 * abs(index.texcoord_index) + 0],
                 attrib.texcoords[2 * abs(index.texcoord_index) + 1]};
-            auto hash = VertexBitHash(&position, &normal, &textureCoordinates);
-            if (uniqueVertices.count(hash) == 0)
+            // Fix this.
+            if (true)
             {
                 modelData.vertices.push_back(position);
                 modelData.normals.push_back(normal);
@@ -1245,12 +1281,27 @@ void ObjLoader(std::string inputFile, ModelData& modelData)
                 modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, position);
                 modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, position);
                 modelData.indexes.push_back(counter);
-                uniqueVertices[hash] = counter;
-                ++counter;
+                counter++;
             }
             else
             {
-                modelData.indexes.push_back(uniqueVertices[hash]);
+                auto hash = VertexBitHash(&position, &normal, &textureCoordinates);
+                if (uniqueVertices.count(hash) == 0)
+                {
+                    modelData.vertices.push_back(position);
+                    modelData.normals.push_back(normal);
+                    modelData.textureCoordinates.push_back(textureCoordinates);
+                    // BBox
+                    modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, position);
+                    modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, position);
+                    modelData.indexes.push_back(counter);
+                    uniqueVertices[hash] = counter;
+                    ++counter;
+                }
+                else
+                {
+                    modelData.indexes.push_back(uniqueVertices[hash]);
+                }
             }
         }
     }
@@ -2117,10 +2168,9 @@ int main()
      *  Start Create Decals Texture 
      */
     decalsPass.use();
-    decalsPass.textureWrap(textureWrapParams);
-    decalsPass.textureSample(textureSampleParams);
     decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iChannel0", 1);
     decalsPass.createTexture(&(modelData.material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iChannel2", 4);
+
     decalsPass.setInt("iChannel3", 5);
     decalsPass.setFloat("bias", computeBiasDepthComparison(modelData));
     decalsPass.setInt("iDepth", 2);
@@ -2827,8 +2877,6 @@ void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newM
 
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR;
-    decalsPass.textureWrap(textureWrapParams);
-    decalsPass.textureSample(textureSampleParams);
     glDeleteTextures(1, &(modelData.material.decalBaseColor));
     decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iChannel0", 1);
     glDeleteTextures(1, &(modelData.material.decalNormal));
@@ -3263,17 +3311,18 @@ void main_loop()
         JFAPass.setBool("iFlipDecal", flipDecal);
         
         textureWrapParams = Shader::REPEAT;
-        JFAPass.textureWrap(textureWrapParams);
         textureSampleParams = Shader::NEAREST;
-        JFAPass.textureSample(textureSampleParams);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[1].textures[0] : jfaFrameBuffer[0].textures[0]));
-        textureWrapParams = Shader::REPEAT;
         JFAPass.textureWrap(textureWrapParams);
-        textureSampleParams = Shader::LINEAR_MIPS;
         JFAPass.textureSample(textureSampleParams);
+        
+        textureWrapParams = Shader::REPEAT;
+        textureSampleParams = Shader::LINEAR_MIPS;
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+        JFAPass.textureWrap(textureWrapParams);
+        JFAPass.textureSample(textureSampleParams);
         
         glViewport(0, 0, widthHeightJFA.z, widthHeightJFA.w);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3294,8 +3343,8 @@ void main_loop()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, (frameIsEven ? jfaFrameBuffer[0].textures[0] : jfaFrameBuffer[1].textures[0]));
         textureWrapParams = Shader::REPEAT;
-        SDFPass.textureWrap(textureWrapParams);
         textureSampleParams = Shader::NEAREST;
+        SDFPass.textureWrap(textureWrapParams);
         SDFPass.textureSample(textureSampleParams);
         //glActiveTexture(GL_TEXTURE1);
         //glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
@@ -3332,38 +3381,38 @@ void main_loop()
 
     glBindVertexArray(modelData.openGLObject.VAO);
 
+    textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
-    decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
-    textureWrapParams = Shader::REPEAT;
     decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
     
-    glActiveTexture(GL_TEXTURE1);
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
     
     textureWrapParams = Shader::CLAMP_TO_EDGE;
-    decalsPass.textureWrap(textureWrapParams);
     textureSampleParams = Shader::NEAREST;
-    decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
     
     //textureSampleParams = Shader::LINEAR;
     //decalsPass.textureSample(textureSampleParams);
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
 
-    glActiveTexture(GL_TEXTURE4);
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
 
     glActiveTexture(GL_TEXTURE5);
     glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
@@ -3429,7 +3478,7 @@ void main_loop()
         
         fullScreenPass.setBool("iAlpha", drawJFA);
         fullScreenPass.setFloat("iSmoothness", smoothAlpha * 0.5);
-        fullScreenPass.setBool("iNormal", (showTextures == NORMAL ? true : false));
+        fullScreenPass.setBool("iNormal", (showTextures == NORMALS ? true : false));
          
         glViewport(0, 0, WIDTH, HEIGHT);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
