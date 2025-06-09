@@ -203,6 +203,7 @@ bool normalMap     = !false;
 bool splitScreen   = false;
 bool alphaJFA      = true;
 bool showSDFBox    = false;
+bool pbr           = true;
 
 int scale = 1;
 float blend = 0.5f;
@@ -217,6 +218,8 @@ enum SHOW_TEXTURES
     CURRENT_MODEL,
     TEXTURE_SPACE,
     NORMALS,
+    METALLIC,
+    ROUGHNESS,
     JFA
 };
 SHOW_TEXTURES showTextures = CURRENT_MODEL;
@@ -233,9 +236,12 @@ float iTime;
 enum MODEL
 {
     WORKBOOT,
-    SHIRT
+    SHIRT,
+    SPHERE
 };
-MODEL currentModel = SHIRT;
+MODEL currentModel = SPHERE;
+
+GLenum drawingMode = GL_TRIANGLE_STRIP;
 
 std::string fileToString(const std::string& fileName)
 {
@@ -285,19 +291,23 @@ struct Material
 {
     unsigned int baseColor;
     unsigned int normal;
-    unsigned int roughness;
     unsigned int metallic;
-    unsigned int ao;
+    unsigned int roughness;
     unsigned int decalBaseColor;
     unsigned int decalNormal;
+    unsigned int ao;
+    // Each element of the following array contains the number of channels of each of the textures.
+    // 0 Albedo, 1 Normal, 2 Metallic, 3 Roughness, 4 AO, 5 Decal Albedo, 6 Decal Normal. 
+    std::array<int, 7> channels;
 };
 
 struct OpenGLObject
 {
-    unsigned int VBOVertices,
+    unsigned int /*VBOVertices,
         VBONormals,
         VBOTextureCoordinates,
-        VBOTangents,
+        VBOTangents,*/
+        VBO,
         VAO,
         EBO;
 };
@@ -330,7 +340,7 @@ struct ModelFileNames
                 decalNormal;
 };
 
-std::vector<ModelFileNames> fileNames(2);
+std::vector<ModelFileNames> fileNames(3);
 std::vector<ModelData> modelsData(fileNames.size());
 
 const void printModelData(const ModelData& modelData)
@@ -339,10 +349,11 @@ const void printModelData(const ModelData& modelData)
                  "Normals size: "          << modelData.normals.size()                     << "\n" <<
                  "Tangents size: "         << modelData.tangents.size()                    << "\n" <<
                  "Indices size: "          << modelData.indexes.size()                     << "\n" <<
-                 "OpenGL VBO Vertices: "   << modelData.openGLObject.VBOVertices           << "\n" <<
-                 "OpenGL VBO Normals: "    << modelData.openGLObject.VBONormals            << "\n" <<
-                 "OpenGL VBO Tangents: "   << modelData.openGLObject.VBOTangents           << "\n" <<
-                 "OpenGL VBO TexCoords: "  << modelData.openGLObject.VBOTextureCoordinates << "\n" <<
+                 //"OpenGL VBO Vertices: "   << modelData.openGLObject.VBOVertices           << "\n" <<
+                 //"OpenGL VBO Normals: "    << modelData.openGLObject.VBONormals            << "\n" <<
+                 //"OpenGL VBO Tangents: "   << modelData.openGLObject.VBOTangents           << "\n" <<
+                 //"OpenGL VBO TexCoords: "  << modelData.openGLObject.VBOTextureCoordinates << "\n" <<
+                 "OpenGL VBO: "            << modelData.openGLObject.VBO                   << "\n" <<
                  "OpenGL EBO: "            << modelData.openGLObject.EBO                   << "\n" <<
                  "OpenGL VAO: "            << modelData.openGLObject.VAO                   << "\n" <<
                  "Texture BaseColor: "     << modelData.material.baseColor                 << "\n" <<
@@ -970,6 +981,77 @@ void renderQuad()
     glBindVertexArray(0);
 }
 
+void ClearModelVertexData(ModelData& modelData);
+void ComputeTangents(ModelData& modelData);
+
+// https://learnopengl.com/code_viewer_gh.php?code=src/6.pbr/1.2.lighting_textured/lighting_textured.cpp
+void renderSphere(ModelData& modelData)
+{
+    ClearModelVertexData(modelData);
+
+    const unsigned int X_SEGMENTS = 64;
+    const unsigned int Y_SEGMENTS = 64;
+    const float PI = 3.14159265359f;
+    const float T_PI = PI * 2.0f;
+
+    glm::vec2 xySegments = glm::vec2(X_SEGMENTS, Y_SEGMENTS);
+    //unsigned int idx = 0;
+    for (unsigned int u = 0; u <= X_SEGMENTS; ++u)
+    {
+        for (unsigned int v = 0; v <= Y_SEGMENTS; ++v)
+        {
+
+            glm::vec2 uv = glm::vec2(u, v) / xySegments;
+
+            float sinPIV = sin(PI * uv.y);
+            float cosTwoPIUTimesSinPIV = cos(T_PI * uv.x) * sinPIV;
+            float sinTwoPIU = sin(T_PI * uv.x);
+            float sinTwoPIUTimesSinPIV = sinTwoPIU * sinPIV;
+                
+            glm::vec3 pos = glm::vec3(cosTwoPIUTimesSinPIV,
+                                        cos(PI * uv.y),
+                                        sinTwoPIUTimesSinPIV);
+                
+            glm::vec3 nor = pos;
+                
+            glm::vec4 tan = glm::vec4(-T_PI * sinTwoPIUTimesSinPIV,
+                                        0.0,                        
+                                        T_PI * cosTwoPIUTimesSinPIV,
+                                        1.0);
+
+            modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, pos);
+            modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, pos);
+                
+            modelData.textureCoordinates.push_back(uv);
+            modelData.vertices.push_back(pos);
+            modelData.normals.push_back(nor);
+            modelData.tangents.push_back(tan);
+        }
+    }
+
+    bool oddRow = false;
+    for (unsigned int y = 0; y < Y_SEGMENTS; ++y)
+    {
+        if (!oddRow) // even rows: y == 0, y == 2; and so on
+        {
+            for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+            {
+                modelData.indexes.push_back(y * (X_SEGMENTS + 1) + x);
+                modelData.indexes.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+            }
+        }
+        else
+        {
+            for (int x = X_SEGMENTS; x >= 0; --x)
+            {
+                modelData.indexes.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+                modelData.indexes.push_back(y * (X_SEGMENTS + 1) + x);
+            }
+        }
+        oddRow = !oddRow;
+    }
+}
+
 // renderCube() renders a 1x1 3D cube in NDC.
 // -------------------------------------------------
 unsigned int cubeVAO = 0;
@@ -1465,52 +1547,50 @@ void loadGLTF(tinygltf::Model &model, ModelData& modelData)
 
 void CreateBOs(ModelData& modelData)
 {
-    // Create a Vertex Buffer Object and copy the vertex data to it
-    //unsigned int VBOVertices, VBONormals, VBOTextureCoordinates, VAO, EBO;
+    std::vector<float> data;
+    for (unsigned int i = 0; i < modelData.vertices.size(); ++i)
+    {
+        data.push_back(modelData.vertices[i].x);
+        data.push_back(modelData.vertices[i].y);
+        data.push_back(modelData.vertices[i].z);
+        if (modelData.normals.size() > 0)
+        {
+            data.push_back(modelData.normals[i].x);
+            data.push_back(modelData.normals[i].y);
+            data.push_back(modelData.normals[i].z);
+        }
+        if (modelData.textureCoordinates.size() > 0)
+        {
+            data.push_back(modelData.textureCoordinates[i].x);
+            data.push_back(modelData.textureCoordinates[i].y);
+        }
+        if (modelData.tangents.size() > 0)
+        {
+            data.push_back(modelData.tangents[i].x);
+            data.push_back(modelData.tangents[i].y);
+            data.push_back(modelData.tangents[i].z);
+            data.push_back(modelData.tangents[i].w);
+        }
+    }
+
     glGenVertexArrays(1, &(modelData.openGLObject.VAO));
-    glGenBuffers(1, &(modelData.openGLObject.VBOVertices));
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOVertices);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelData.vertices.size(), modelData.vertices.data(), GL_STATIC_DRAW);
-    //modelDataVertices.clear();
-
-	glGenBuffers(1, &(modelData.openGLObject.VBONormals));
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBONormals);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * modelData.normals.size(), modelData.normals.data(), GL_STATIC_DRAW);
-    //modelDataNormals.clear();
-
-	glGenBuffers(1, &(modelData.openGLObject.VBOTextureCoordinates));
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTextureCoordinates);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * modelData.textureCoordinates.size(), modelData.textureCoordinates.data(), GL_STATIC_DRAW);
-    //modelDataTextureCoordinates.clear();
-
-    glGenBuffers(1, &(modelData.openGLObject.VBOTangents));
-    glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTangents);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * modelData.tangents.size(), modelData.tangents.data(), GL_STATIC_DRAW);
-
+    glGenBuffers(1, &(modelData.openGLObject.VBO));
     glGenBuffers(1, &(modelData.openGLObject.EBO));
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelData.openGLObject.EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * modelData.indexes.size(), modelData.indexes.data(), GL_STATIC_DRAW);
-    //indexes.clear();
-    // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+
     glBindVertexArray(modelData.openGLObject.VAO);
-
-    //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBO);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelData.openGLObject.EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, modelData.indexes.size() * sizeof(unsigned int), &modelData.indexes[0], GL_STATIC_DRAW);
+    unsigned int stride = (3 + 3 + 2 + 4) * sizeof(float);
     glEnableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOVertices);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelData.openGLObject.EBO);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-	glEnableVertexAttribArray(1);
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBONormals);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-	
-	glEnableVertexAttribArray(2);
-	glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTextureCoordinates);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glBindBuffer(GL_ARRAY_BUFFER, modelData.openGLObject.VBOTangents);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
 }
 
 void BuildBVH(ModelData& modelData)
@@ -1619,7 +1699,7 @@ void reloadModel(ModelData& modelData)
     //std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
 }
 
-void recomputeDecalBaseColorTexture()
+void recomputeDecalBaseColorTexture(Shader& shader, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
     //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
     //decalsPass.createTextureFromFile(&decalTexture, decalAlbedoImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
@@ -1631,13 +1711,16 @@ void recomputeDecalBaseColorTexture()
     glGenTextures(1, &(modelData.material.decalBaseColor));
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
 
+    shader.textureWrap(wrapParam);
+    shader.textureSample(sampleParam);
+    /*
     // In an ideal world this should be exposed as input params to the function.
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);*/
 
     // Get the texture format automatically.
     auto format = GL_RGBA;    
@@ -1648,7 +1731,7 @@ void recomputeDecalBaseColorTexture()
 
     // Bind the uniform sampler.
     decalsPass.use();
-    decalsPass.setInt("iChannel0", 1);
+    //decalsPass.setInt("iChannel0", 1);
 
     // Update decal through triggering the ray trace.
     updateViewMatrix();
@@ -1659,7 +1742,7 @@ void recomputeDecalBaseColorTexture()
              projection, view, false);
 }
 
-void recomputeDecalNormalTexture()
+void recomputeDecalNormalTexture(Shader& shader, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
     //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
     //decalsPass.createTextureFromFile(&decalTexture, decalAlbedoImageBuffer, widthDecal, heightDecal, "iChannel0", 1);
@@ -1671,13 +1754,16 @@ void recomputeDecalNormalTexture()
     glGenTextures(1, &(modelData.material.decalNormal));
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
 
+    shader.textureWrap(wrapParam);
+    shader.textureSample(sampleParam);
+    /*
     // In an ideal world this should be exposed as input params to the function.
     // Texture wrapping params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     // Texture filtering params.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);*/
 
     // Get the texture format automatically.
     auto format = GL_RGBA;    
@@ -1688,7 +1774,7 @@ void recomputeDecalNormalTexture()
 
     // Bind the uniform sampler.
     decalsPass.use();
-    decalsPass.setInt("iChannel3", 5);
+    //decalsPass.setInt("iChannel3", 5);
 
     // Update decal through triggering the ray trace.
     updateViewMatrix();
@@ -1949,47 +2035,53 @@ void createAndAttachDepthPrePassRbo(frameBuffer& depthFramebuffer)
     /** End Depth Buffer **/
 }
 
-void createAndAttachTextureSpaceRbo(frameBuffer& textureSpaceFramebuffer)
+void createAndAttachTextureSpaceRbo(const ModelData& modelData, Shader& shader, frameBuffer& textureSpaceFramebuffer, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
     /** Start Texture Space Buffer **/
     glGenFramebuffers(1, &(textureSpaceFramebuffer.framebuffer));
     glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
-    geometryPass.use();
+    shader.use();
 #ifdef OPTIMIZE
 #else
-    std::cout << "Albedo Width: "  << geometryPass.Width  << std::endl;
-    std::cout << "Albedo Height: " << geometryPass.Height << std::endl;
+    std::cout << "Texture Space Width: "  << shader.Width  << std::endl;
+    std::cout << "Texture Space Height: " << shader.Height << std::endl;
 #endif
 
-    textureSpaceFramebuffer.textures = std::vector<unsigned int>(2);
+    textureSpaceFramebuffer.textures = std::vector<unsigned int>(4);
+    unsigned int drawBuffersFBO[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
 
     for (uint8_t i = 0u; i < (uint8_t)textureSpaceFramebuffer.textures.size(); ++i)
     {
         glGenTextures(1, &(textureSpaceFramebuffer.textures[i]));
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, geometryPass.Width, geometryPass.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
+        //if (true)//i < 2)
+        //    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL); // FIX
+        //else
+        //    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL); // FIX
+        glTexImage2D(GL_TEXTURE_2D, 0, modelData.material.channels[i], shader.Width, shader.Height, 0, modelData.material.channels[i], GL_UNSIGNED_BYTE, NULL); // FIX
+        /*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
+        shader.textureWrap(wrapParam);
+        shader.textureSample(sampleParam);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0+i, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
     }
 
     // Set the list of draw buffers.
-    unsigned int drawBuffersFBO[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-    glDrawBuffers(2, drawBuffersFBO); // "1" is the size of DrawBuffers
+    glDrawBuffers(4, drawBuffersFBO); // "1" is the size of DrawBuffers
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Texture Space Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     deferredPass.use();
-    deferredPass.setInt("gNormal",    0);
-    deferredPass.setInt("gAlbedo",    1);
-    // deferredPass.setInt("gMetallic",  2);
-    // deferredPass.setInt("gRoughness", 3);
+    deferredPass.setInt("gAlbedo",    0);
+    deferredPass.setInt("gNormal",    1);
+    deferredPass.setInt("gMetallic",  2);
+    deferredPass.setInt("gRoughness", 3);
     // deferredPass.setInt("gAO",        4);
     /** End Texture Space Buffer **/
-    std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " albedo texture: " << textureSpaceFramebuffer.textures[0] << " normal texture: " << textureSpaceFramebuffer.textures[1] << std::endl;
+    //std::cout << "Texture space frame buffer: framebuffer: " << textureSpaceFramebuffer.framebuffer << " albedo texture: " << textureSpaceFramebuffer.textures[0] << " normal texture: " << textureSpaceFramebuffer.textures[1] << std::endl;
 }
 
 void createAndAttachRboJFA(frameBuffer& frameBuffer, const GLsizei& sizeX, const GLsizei& sizeY, const FrameBufferTextureParams& frameBufferTextureParams)
@@ -2098,7 +2190,7 @@ Light light;
 void readModelsPreload(ModelData& modelData, std::vector<ModelData>& modelsData, 
                        const std::vector<ModelFileNames>& fileNames, const int& pick)
 {
-    for (uint8_t i = 0u; i < fileNames.size(); ++i)
+    for (uint8_t i = 0u; i < fileNames.size() - 1; ++i)
     {
         ClearModelVertexData(modelsData[i]);
         if (fileExists(fileNames[i].mesh))
@@ -2135,6 +2227,12 @@ void readModelsPreload(ModelData& modelData, std::vector<ModelData>& modelsData,
          // Build the acceleration structure for ray tracing.
         BuildBVH(modelsData[i]); 
     }
+
+    // Procedural Sphere.
+    size_t lastIndex = fileNames.size() - 1;
+    renderSphere(modelsData[lastIndex]);
+    BuildBVH(modelsData[lastIndex]);
+
     ClearModelVertexData(modelData);
     modelData = modelsData[pick];
 }
@@ -2153,6 +2251,12 @@ int main()
     fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "Assets/Textures/Watchmen_2.png";
     fileNames[1].decalNormal = "Assets/Textures/Watchmen_2_normal.png";
+
+    fileNames[2].mesh = "";
+    fileNames[2].baseColor = "Assets/Sphere/rustediron2_basecolor.png";
+    fileNames[2].normal = "Assets/Sphere/rustediron2_normal.png";
+    fileNames[2].decalBaseColor = "Assets/Textures/Watchmen.png";
+    fileNames[2].decalNormal = "Assets/Textures/Watchmen_normal.png";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
@@ -2165,9 +2269,15 @@ int main()
     fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
     fileNames[1].decalBaseColor = "../Assets/Textures/Watchmen_2.png";
     fileNames[1].decalNormal = "../Assets/Textures/Watchmen_2_normal.png";
-    /*fileNames[2].mesh = "../Assets/RV/source/RV.glb";
-    fileNames[2].baseColor = "../Assets/RV/textures/clay_baseColor.png";
-    fileNames[2].normal = "../Assets/Clay/textures/map_normals.jpg";*/
+    
+    fileNames[2].mesh = "";
+    fileNames[2].baseColor = "Assets/Sphere/rustediron2_basecolor.png";
+    fileNames[2].normal = "Assets/Sphere/rustediron2_normal.png";
+    fileNames[2].metallic = "Assets/Sphere/rustediron2_metallic.png";
+    fileNames[2].roughness = "Assets/Sphere/rustediron2_roughness.png";
+
+    fileNames[2].decalBaseColor = "Assets/Textures/Watchmen.png";
+    fileNames[2].decalNormal = "Assets/Textures/Watchmen_normal.png";
     #endif
 #ifdef OPTIMIZE
     std::cout << "Optimize" << std::endl;
@@ -2209,6 +2319,10 @@ int main()
     {
         pick = 1;
     }
+    else
+    {
+        pick = 2;
+    }
 
     /**
      * Start Pre-load Models
@@ -2226,8 +2340,11 @@ int main()
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::REPEAT;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
 
-    geometryPass.createTexture(&(modelData.material.baseColor), fileNames[pick].baseColor, textureWrapParams, textureSampleParams, "BaseColor", 0);
-    geometryPass.createTexture(&(modelData.material.normal), fileNames[pick].normal, textureWrapParams, textureSampleParams, "Normal", 1);
+    geometryPass.createTexture(&(modelData.material.baseColor), fileNames[pick].baseColor, textureWrapParams, textureSampleParams, "BaseColor", 0, modelData.material.channels[0]);
+    geometryPass.createTexture(&(modelData.material.normal),    fileNames[pick].normal,    textureWrapParams, textureSampleParams, "Normal", 1,    modelData.material.channels[1]);
+    geometryPass.createTexture(&(modelData.material.metallic),  fileNames[pick].metallic,  textureWrapParams, textureSampleParams, "Metallic", 2,  modelData.material.channels[2]);
+    geometryPass.createTexture(&(modelData.material.roughness), fileNames[pick].roughness, textureWrapParams, textureSampleParams, "Roughness", 3, modelData.material.channels[3]);
+
     /**
      *  End Create Model Textures
      */
@@ -2236,13 +2353,13 @@ int main()
      *  Start Create Decals Texture 
      */
     decalsPass.use();
-    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iChannel0", 1);
-    decalsPass.createTexture(&(modelData.material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iChannel2", 4);
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iDecalAlbedo", 1, modelData.material.channels[5]);
+    decalsPass.createTexture(&(modelData.material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData.material.channels[6]);
 
-    decalsPass.setInt("iChannel3", 5);
+
     decalsPass.setFloat("bias", computeBiasDepthComparison(modelData));
-    decalsPass.setInt("iDepth", 2);
-    decalsPass.setInt("iSDF", 3);
+    //decalsPass.setInt("iDepth", 2);
+    //decalsPass.setInt("iSDF", 3);
     /**
      *  Start Create Decals Texture
      */
@@ -2252,7 +2369,8 @@ int main()
     /** End Depth Buffer **/
 
     /** Start Texture Space Buffer **/
-    createAndAttachTextureSpaceRbo(textureSpaceFramebuffer);
+    textureSampleParams = Shader::NEAREST;
+    createAndAttachTextureSpaceRbo(modelData, geometryPass, textureSpaceFramebuffer, textureWrapParams, textureSampleParams);
     /** End Texture Space Buffer **/
 
     glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
@@ -2300,6 +2418,8 @@ int main()
     fullScreenPass.setInt("iChannel0", 0);
     fullScreenPass.setInt("iChannel1", 1);
     fullScreenPass.setInt("iChannel2", 2);
+    fullScreenPass.setInt("iChannel3", 1);
+    fullScreenPass.setInt("iChannel4", 2);
     renderQuad();
     /**
      * End Full Screen Quad
@@ -2835,8 +2955,8 @@ enum MaterialTextureType
 {
     BASE_COLOR,
     NORMAL,
-    METALLIC,
-    ROUGHNESS,
+    METAL,
+    ROUGH,
     AO
 };
 
@@ -2881,7 +3001,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     std::string textureType = "";
     unsigned int* materialType = {};
     isGLTF = false;
-    switch (textureTypeInt)
+    switch (textureTypeInt) 
     {
         // BaseColor
         case 0:
@@ -2927,7 +3047,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     // Make decal recreation prettier some time in the future.
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
-    shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt);
+    shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt, modelData.material.channels[textureTypeInt]);
 
     FrameBufferTextureParams frameBufferTextureParams;
     frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
@@ -2946,9 +3066,9 @@ void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newM
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR;
     glDeleteTextures(1, &(modelData.material.decalBaseColor));
-    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iChannel0", 1);
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iDecalAlbedo", 4, modelData.material.channels[5]);
     glDeleteTextures(1, &(modelData.material.decalNormal));
-    decalsPass.createTexture(&(modelData.material.decalNormal), fileNameDecalNormal, textureWrapParams, textureSampleParams, "iChannel2", 4);
+    decalsPass.createTexture(&(modelData.material.decalNormal), fileNameDecalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData.material.channels[6]);
     
     float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
@@ -2980,13 +3100,15 @@ void main_loop()
         = glm::ortho(-aspect, aspect, -1.0f, 1.0f, -1000.0f, 1000.0f);
     //= glm::ortho(0.0f, halfWidthHeight.x, halfWidthHeight.y / 2.0f, 0.0f, near, far);
 
+    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::REPEAT;
+    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
     if (decalAlbedoImageBuffer.size() > 0)
     {
-        recomputeDecalBaseColorTexture();
+        recomputeDecalBaseColorTexture(decalsPass, textureWrapParams, textureSampleParams);
     }
     if (decalNormalImageBuffer.size() > 0)
     {
-        recomputeDecalNormalTexture();
+        recomputeDecalNormalTexture(decalsPass, textureWrapParams, textureSampleParams);
     }
 
     /**
@@ -3002,7 +3124,7 @@ void main_loop()
     rotateLight += lightPosition;
     light.model = glm::mat4(1.0f);
     light.model = glm::translate(light.model, rotateLight);
-    light.position = glm::vec3(light.model * glm::vec4(light.position, 1.0f));
+    light.position = glm::vec3(light.model * glm::vec4(1.0f));
     /**
      * End Light Setup
      */
@@ -3120,7 +3242,7 @@ void main_loop()
     ImGui::Begin("Graphical User Interface");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
     std::string printTime = std::to_string(deltaTime * 1000.0f) + " ms.\n";
     ImGui::TextUnformatted(printTime.c_str());
-    static const char* textureTypes[]{ "Model", "Albedo", "Normals", "JFA" };
+    static const char* textureTypes[]{ "Model", "Albedo", "Normals", "Metallic", "Roughness", "JFA" };
     static const char* selectedTexture = textureTypes[0];
     bool textureSelectionDirty = ImGui::BeginCombo("Display", selectedTexture, 0);
     //std::cout << (cameraSelectionDirty ? "Camera Dirty" : "Camera Not Dirty") << std::endl;
@@ -3151,6 +3273,14 @@ void main_loop()
         else if (strcmp(selectedTexture, "Normals") == 0)
         {
             showTextures = NORMALS;
+        }
+        else if (strcmp(selectedTexture, "Metallic") == 0)
+        {
+            showTextures = METALLIC;
+        }
+        else if (strcmp(selectedTexture, "Roughness") == 0)
+        {
+            showTextures = ROUGHNESS;
         }
         else
         {
@@ -3191,8 +3321,9 @@ void main_loop()
             }
         }
     }
-    static const char* modelsToSelect[]{ "Workboot", "Shirt" };
-    static const char* selectedModel = modelsToSelect[1];
+    
+    static const char* modelsToSelect[]{ "Shirt", "Workboot", "Sphere" };
+    static const char* selectedModel = modelsToSelect[2];
     bool selectedModelDirty = ImGui::BeginCombo("Model", selectedModel, 0);
     if (selectedModelDirty)
     {
@@ -3207,20 +3338,34 @@ void main_loop()
         ImGui::EndCombo();
         int pickModel = 1;
         bool recomputeModel = false;
-        if (strcmp(selectedModel, "Workboot") == 0 && currentModel != SHIRT)
+        if (strcmp(selectedModel, "Shirt") == 0 && currentModel != SHIRT)
         {
             currentModel = SHIRT;
-            pickModel = 1;
-            recomputeModel = true;
-        }
-        else if (strcmp(selectedModel, "Shirt") == 0 && currentModel != WORKBOOT)
-        {
-            currentModel = WORKBOOT;
             pickModel = 0;
             recomputeModel = true;
+            drawingMode = GL_TRIANGLES;
+            std::cout << "Shirt" << std::endl;
+        }
+        else if (strcmp(selectedModel, "Workboot") == 0 && currentModel != WORKBOOT)
+        {
+            currentModel = WORKBOOT;
+            pickModel = 1;
+            recomputeModel = true;
+            drawingMode = GL_TRIANGLES;
+            std::cout << "Workboot" << std::endl;
+        }
+        else if (strcmp(selectedModel, "Sphere") == 0 && currentModel != SPHERE)
+        {
+            currentModel = SPHERE;
+            pickModel = 2;
+            recomputeModel = true;
+            drawingMode = GL_TRIANGLE_STRIP;
+            std::cout << "Sphere" << std::endl;
         }
         if (recomputeModel)
         {
+            std::cout << "Regenerating model" << std::endl;
+
             regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].decalBaseColor, fileNames[pickModel].decalNormal);
             
             frameJFA = 0;
@@ -3240,6 +3385,10 @@ void main_loop()
         {
             normalMap = !normalMap;
         }
+        if (normalMap && ImGui::Button("Physically Based Lighting"))
+        {
+            pbr = !pbr;
+        }
         if (ImGui::Button("See Light"))
         {
             light.toggle = !light.toggle;
@@ -3253,13 +3402,16 @@ void main_loop()
     {
         frameJFA = 0;
     }
-    if (ImGui::SliderInt("Scale JFA", &jfaFactor, 2, 8))
+    if (alphaJFA)
     {
-        frameJFA = 0;
-        downloadImage = 1u;
-        regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+        if (ImGui::SliderInt("Scale JFA", &jfaFactor, 2, 8))
+        {
+            frameJFA = 0;
+            downloadImage = 1u;
+            regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA);
+        }
     }
-    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS)
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS || showTextures == METALLIC || showTextures == ROUGHNESS)
     {
         if (ImGui::Button("Show Blend"))
         {
@@ -3281,7 +3433,7 @@ void main_loop()
         ImGui::SliderFloat("Smoothness", &smoothAlpha, 0.0f, 1.0f);
         ImGui::SliderInt("Pixel Width Alpha", &distanceWidthJFA, 1, 32);
     }
-    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS)
+    if (showTextures == CURRENT_MODEL || showTextures == TEXTURE_SPACE || showTextures == NORMALS || showTextures == METALLIC || showTextures == ROUGHNESS)
     {
         glm::vec2 projectorDirty = glm::vec2(projectorSize, projectorRotation);
         ImGui::SliderFloat("Projector Size", &projectorSize, 0.001f, 1.0f);
@@ -3356,15 +3508,15 @@ void main_loop()
     glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);
 
     glClear(GL_DEPTH_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLES, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     /** End Depth Pre-Pass **/
 
     float flipFloat = (float)flip;
     float flipAlbedoFloat = (float)flipAlbedo;
 
-    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::REPEAT;
-    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::NEAREST;
+    textureWrapParams = Shader::REPEAT;
+    textureSampleParams = Shader::NEAREST;
     if (alphaJFA)
     {
         /** Start Jump Flooding Algorithm **/
@@ -3453,47 +3605,69 @@ void main_loop()
 
     glBindVertexArray(modelData.openGLObject.VAO);
 
+    // Albedo
+    decalsPass.setInt("iAlbedo", 0);
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
+
+    // Normal
+    decalsPass.setInt("iNormal", 1);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+
+    // Metallic
+    decalsPass.setInt("iMetallic", 2);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.metallic);
+
+    // Roughness
+    decalsPass.setInt("iRoughness", 3);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
     
+    // Decal Base Color
+    decalsPass.setInt("iDecalAlbedo", 4);
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
-    glActiveTexture(GL_TEXTURE1);
+    glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
+
+    // Decal Normal
+    decalsPass.setInt("iDecalNormal", 5);
+    textureWrapParams = Shader::CLAMP_TO_EDGE;
+    textureSampleParams = Shader::LINEAR_MIPS;
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
+    decalsPass.textureWrap(textureWrapParams);
+    decalsPass.textureSample(textureSampleParams);
     
+    // Depth
+    decalsPass.setInt("iDepth", 6);
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::NEAREST;
-    glActiveTexture(GL_TEXTURE2);
+    glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_2D, depthFramebuffer.textures[0]);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
     
+    // SDF
     //textureSampleParams = Shader::LINEAR;
     //decalsPass.textureSample(textureSampleParams);
-    glActiveTexture(GL_TEXTURE3);
+    decalsPass.setInt("iSDF", 7);
+    glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
-
-    textureWrapParams = Shader::CLAMP_TO_EDGE;
-    textureSampleParams = Shader::LINEAR_MIPS;
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
-    decalsPass.textureWrap(textureWrapParams);
-    decalsPass.textureSample(textureSampleParams);
-
-    glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
         
     glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDrawElements(GL_TRIANGLES, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
     if (downloadImage == 1u)
     {
@@ -3515,7 +3689,7 @@ void main_loop()
 #endif
     }
     /** End Decal Pass **/
-    if (showTextures == TEXTURE_SPACE || showTextures == NORMALS || showTextures == JFA)
+    if (showTextures != CURRENT_MODEL)// == TEXTURE_SPACE || showTextures == NORMALS || showTextures == METALLIC || showTextures == ROUGHNESS)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(quadVAO);
@@ -3535,23 +3709,45 @@ void main_loop()
         textureSampleParams = Shader::NEAREST;
         fullScreenPass.textureSample(textureSampleParams);
         
-        // Albedo
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-        
-        // SDF
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
+        // Albedo, Normal, Metallic, Roughness
+        //fullScreenPass.setInt("iChannel0", 0);
+        /*for (int i = 0; i < textureSpaceFramebuffer.textures.size() - 1; ++i)
+        {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i]);
+        }
 
-        // Normals
-        glActiveTexture(GL_TEXTURE2);
+        glActiveTexture(GL_TEXTURE0 + textureSpaceFramebuffer.textures.size() - 1);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
+        // SDF
+        glActiveTexture(GL_TEXTURE0 + textureSpaceFramebuffer.textures.size());
+        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);*/
+
+        glActiveTexture(GL_TEXTURE0 + 0);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+
+        glActiveTexture(GL_TEXTURE0 + 1);
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+
+        glActiveTexture(GL_TEXTURE0 + 2);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[2]);
+
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[3]);
+
+        glActiveTexture(GL_TEXTURE0 + 4);
+        glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
         
         fullScreenPass.setInt("iScale", fullScreenPassRepeat);
         
         fullScreenPass.setBool("iAlpha", drawJFA);
         fullScreenPass.setFloat("iSmoothness", smoothAlpha * 0.5);
         fullScreenPass.setBool("iNormal", (showTextures == NORMALS ? true : false));
+        //if (showTextures != CURRENT_MODEL || showTextures != JFA)
+        std::cout << "Show Textures: " << showTextures << std::endl;
+        {
+            fullScreenPass.setInt("iTexture", (int)showTextures);
+        }
          
         glViewport(0, 0, WIDTH, HEIGHT);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -3583,20 +3779,42 @@ void main_loop()
         deferredPass.setMat4("projection", projectionHalf);
         deferredPass.setMat4("view", view);
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+        deferredPass.setBool("iPBR", pbr);
 
-        // Normal
+        // Albedo, Normal, Metallic, Roughness.
         textureSampleParams = Shader::LINEAR;
+        textureWrapParams = Shader::REPEAT;
+        
+        for (int i = 0; i < textureSpaceFramebuffer.textures.size()-1; ++i)
+        {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i]);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
+        }
+        /*glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
         deferredPass.textureSample(textureSampleParams);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+        deferredPass.textureWrap(textureWrapParams);
 
         // Albedo
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
-        // glActiveTexture(GL_TEXTURE2);
-        // glBindTexture(GL_TEXTURE_2D, material.metallic);
-        // glActiveTexture(GL_TEXTURE3);
-        // glBindTexture(GL_TEXTURE_2D, material.ao);
+        glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+        deferredPass.textureSample(textureSampleParams);
+        deferredPass.textureWrap(textureWrapParams);
+        
+        //textureSampleParams = Shader::LINEAR_MIPS;
+        // Metallic
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.metallic);
+        deferredPass.textureSample(textureSampleParams);
+        deferredPass.textureWrap(textureWrapParams);
+
+        // Roughness
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
+        deferredPass.textureSample(textureSampleParams);
+        deferredPass.textureWrap(textureWrapParams);*/
 
         deferredPass.setVec3("viewPos", camPos);
         deferredPass.setVec3("lightPos", light.position);
@@ -3609,7 +3827,7 @@ void main_loop()
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glDrawElements(GL_TRIANGLES, (GLint)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
@@ -3629,6 +3847,8 @@ void main_loop()
             renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
         }
 
+        // Dummy modelData, it will not be modified given that we have already cached.
+        ModelData modelDataDummy;
         if (showHitPoint)
         {
             glm::mat4 hitPositionModel = modelData.modelMatrix;
@@ -3643,6 +3863,7 @@ void main_loop()
             hitPosition.setMat4("projection", projectionHalf);
             hitPosition.setMat4("view", view);
             hitPosition.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+            //renderSphere(modelDataDummy);
             renderCube();
         }
 
@@ -3672,6 +3893,7 @@ void main_loop()
             hitPosition.setMat4("projection", projectionHalf);
             hitPosition.setMat4("view", view);
             hitPosition.setVec3("color", light.color);
+            //renderSphere(modelDataDummy);
             renderCube();
         }
 
@@ -3698,18 +3920,29 @@ void main_loop()
             
             // Normal
             textureSampleParams = Shader::LINEAR;
-            deferredPass.textureSample(textureSampleParams);
+            textureWrapParams = Shader::REPEAT;
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
             // Albedo
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
-            // glActiveTexture(GL_TEXTURE2);
-            // glBindTexture(GL_TEXTURE_2D, material.metallic);
-            // glActiveTexture(GL_TEXTURE3);
-            // glBindTexture(GL_TEXTURE_2D, material.ao);
+            // Metallic
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.metallic);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
+
+            // Roughness
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
             deferredPass.setVec3("viewPos", camPos);
             deferredPass.setVec3("lightPos", light.position);
@@ -3718,7 +3951,7 @@ void main_loop()
             deferredPass.setInt("iNormals", enableNormals);
             deferredPass.setFloat("iTime", iTime);
 
-            glDrawElements(GL_TRIANGLES, (GLint)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+            glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glBindVertexArray(0);
@@ -3743,18 +3976,29 @@ void main_loop()
             
             // Normal
             textureSampleParams = Shader::LINEAR;
-            deferredPass.textureSample(textureSampleParams);
+            textureWrapParams = Shader::REPEAT;
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[1]);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
             // Albedo
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[0]);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
-            // glActiveTexture(GL_TEXTURE2);
-            // glBindTexture(GL_TEXTURE_2D, material.metallic);
-            // glActiveTexture(GL_TEXTURE3);
-            // glBindTexture(GL_TEXTURE_2D, material.ao);
+            // Metallic
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.metallic);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
+
+            // Roughness
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
+            deferredPass.textureSample(textureSampleParams);
+            deferredPass.textureWrap(textureWrapParams);
 
             deferredPass.setVec3("viewPos", camPos);
             deferredPass.setVec3("lightPos", light.position);
@@ -3763,7 +4007,7 @@ void main_loop()
             deferredPass.setInt("iNormals", enableNormals);
             deferredPass.setFloat("iTime", iTime);
 
-            glDrawElements(GL_TRIANGLES, (GLint)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+            glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glBindVertexArray(0);

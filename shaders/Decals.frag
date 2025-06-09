@@ -3,15 +3,19 @@ precision highp float;
 in vec3 WorldPos;
 in vec2 TexCoords;
 
-// Uncomment the following for Mac
-#define __EMSCRIPTEN__
+// Uncomment the following for Mac and Windows builds.
+//#define __EMSCRIPTEN__
 
 #ifdef __EMSCRIPTEN__
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Normal;
+layout(location = 2) out vec4 Metallic;
+layout(location = 3) out vec4 Roughness;
 #else
 out vec4 FragColor;
 out vec4 Normal;
+out vec4 Metallic;
+out vec4 Roughness;
 #endif
 
 uniform mat4 model;                                        
@@ -27,14 +31,23 @@ uniform float iSmoothness;
 uniform bool iAlpha;
 uniform bool iShowSDFBox;
 
-// Decal Albedo
-uniform sampler2D iChannel0;
 // Albedo
-uniform sampler2D iChannel1;
-// Decal Normal
-uniform sampler2D iChannel2;
+uniform sampler2D iAlbedo;
+
 // Normal
-uniform sampler2D iChannel3;
+uniform sampler2D iNormal;
+
+// Metallic
+uniform sampler2D iMetallic;
+
+// Roughness
+uniform sampler2D iRoughness;
+
+// Decal Albedo
+uniform sampler2D iDecalAlbedo; 
+
+// Decal Normal
+uniform sampler2D iDecalNormal;
 
 uniform sampler2D iDepth;
 uniform sampler2D iSDF;
@@ -65,7 +78,7 @@ void main()
     vec3 decalUV = WorldPos;
     vec2 texCoords = TexCoords;
 
-    vec2 reciprocalDecalResolution = 1. / vec2( textureSize( iChannel0, 0 ) ); 
+    vec2 reciprocalDecalResolution = 1. / vec2( textureSize( iDecalAlbedo, 0 ) ); 
     float maxReciprocalDecalResolution = max( reciprocalDecalResolution.x, reciprocalDecalResolution.y );
 
     vec3 boxSize = vec3(0.5) + iBlend * maxReciprocalDecalResolution;
@@ -84,11 +97,11 @@ void main()
 
     decalUV.xy = fract( decalUV.xy * float( iScale ) );
 
-    vec4 projectedDecal = texture( iChannel0, decalUV.xy );
-    vec4 decalsNormals  = texture( iChannel2, decalUV.xy );
+    vec4 projectedDecal = texture( iDecalAlbedo, decalUV.xy );
+    vec4 decalsNormals  = texture( iDecalNormal, decalUV.xy );
 
-    vec4 albedoMap      = texture( iChannel1, texCoords );
-    vec4 normalMap      = texture( iChannel3, texCoords );
+    vec4 albedoMap      = texture( iAlbedo, texCoords );
+    vec4 normalMap      = texture( iNormal, texCoords );
 
     if (iAlpha)
     {
@@ -114,4 +127,7 @@ void main()
     vec3 normals = mix( decalsNormals.xyz, normalMap.xyz, renderBoxSDF );
     normals = RNM( normalMap.xyz, normals ) * 0.5 + 0.5;
     Normal = vec4( mix( normals, normalMap.xyz, 1.-showSDFBox ), 1.0 );
+
+    Metallic = texture( iMetallic, texCoords );
+    Roughness = texture( iRoughness, texCoords );
 }

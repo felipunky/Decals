@@ -1,4 +1,10 @@
 TODOs:
+	-Decouple texture creation from shader instance/make static
+	-PBR:
+		-Point lights
+		-IBL
+	-Add sphere:
+		-https://www.songho.ca/opengl/gl_sphere.html
 	-Fix the ComputeTangents functions to work with obj's with the hash map
 	-Add zooming parameters for the texture debugging modes
 	-Fix issues with doing SDF blending on normals

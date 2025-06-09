@@ -11,6 +11,7 @@ out mat3 TBN;
 out vec3 TangentLightPos;
 out vec3 TangentViewPos;
 out vec3 TangentFragPos;
+out vec3 Normal;
 
 uniform mat4 model;                                        
 uniform mat4 view;                                         
@@ -45,6 +46,8 @@ void main()
   TangentLightPos = TBN * lightPos;
   TangentViewPos  = TBN * viewPos;
   TangentFragPos  = TBN * Positions;
+
+  Normal = N;
         
   vec4 objPos = projection * view * worldPos;
   

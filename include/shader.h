@@ -335,7 +335,7 @@ public:
     }
     
 	void createTexture(unsigned int* texture, std::string fileName, const TEXTURE_WRAP_PARAMS& wrapParam, const TEXTURE_SAMPLE_PARAMS& sampleParam, std::string samplerName,
-		int uniform
+		int uniform, GLint& format
 	)
 	{
 		glGenTextures(1, texture);
@@ -361,15 +361,26 @@ public:
 		std::cout << "Original texture data: " << +data[0] << std::endl;
 		#endif
 		// Get the texture format automatically.
-		auto format = GL_RGB;
-		if (channels == 4)
+		format = GL_RGBA;
+		if (channels == 1)
+		{
+			format = GL_RED;
+		}
+		else if (channels == 3)
+		{
+			format = GL_RGB;
+		}
+		else if (channels == 4)
 		{
 			format = GL_RGBA;
 		}
 		if (data)
 		{
 			glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-			glGenerateMipmap(GL_TEXTURE_2D);
+			if (sampleParam == LINEAR_MIPS)
+			{
+				glGenerateMipmap(GL_TEXTURE_2D);
+			}
 		}
 		else
 		{
