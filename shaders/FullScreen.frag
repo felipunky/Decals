@@ -23,40 +23,29 @@ uniform int iTexture;
 void main()
 {
     vec2 uv = gl_FragCoord.xy * float( iScale ) / iResolution;
+    if (iTexture == 1)
+    {
+        FragColor = texture( iChannel0, uv );
+    }
+    else if (iTexture == 2)
+    {
+        FragColor = texture( iChannel1, uv );
+    }
+    else if (iTexture == 3)
+    {
+        FragColor = texture( iChannel2, uv );
+    }
+    else if (iTexture == 4)
+    {
+        FragColor = texture( iChannel3, uv );
+    }
+    else if (iAlpha)
+    {
+        float sdf = texture( iChannel4, uv ).r;
+        FragColor = vec4( mix( vec3( 0 ), vec3( 1 ), smoothstep( 0., iSmoothness, sdf ) ), 1 );
+    }
     if ( uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 )
     {
         FragColor *= 0.;
-    }
-    else
-    {
-        if (iAlpha)
-        {
-            float sdf = texture( iChannel4, uv ).r;
-            FragColor = vec4( mix( vec3( 0 ), vec3( 1 ), smoothstep( 0., iSmoothness, sdf ) ), 1 );
-        }
-        else
-        {
-            if (iTexture == 1)
-            {
-                FragColor = texture( iChannel0, uv );
-            }
-            else if (iTexture == 2)
-            {
-                FragColor = texture( iChannel1, uv );
-            }
-            else if (iTexture == 3)
-            {
-                FragColor = texture( iChannel2, uv );
-            }
-            else if (iTexture == 4)
-            {
-                FragColor = texture( iChannel3, uv );
-            }
-            else
-            {
-                float sdf = texture( iChannel4, uv ).r;
-                FragColor = vec4( mix( vec3( 0 ), vec3( 1 ), smoothstep( 0., iSmoothness, sdf ) ), 1 );
-            }
-        }
     }
 }

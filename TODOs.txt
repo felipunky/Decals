@@ -1,4 +1,12 @@
+Albedo=3
+Normal=0
+Metallic=1
+Roughness=2
+
 TODOs:
+	-Fix model changing on the PBR branch.
+	-Set dynamic picking of tangent space normals between shader and precomputed ones
+	-Set SDF frame buffer texture to be GL_RED
 	-Decouple texture creation from shader instance/make static
 	-PBR:
 		-Point lights

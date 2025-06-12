@@ -16,6 +16,10 @@ out vec4 FragColor;
 out vec4 Normal;
 out vec4 Metallic;
 out vec4 Roughness;
+/*out vec4 FragColor;
+out vec4 Normal;
+out vec4 Metallic;
+out vec4 Roughness;*/
 #endif
 
 uniform mat4 model;                                        
@@ -121,13 +125,19 @@ void main()
 
     float renderBoxSDF = smoothstep( -smoothnessBox, smoothnessBox, boxSDF );
 
-    vec3 colorOut = mix( projectedDecal.rgb * showSDFBox, albedoMap.rgb, renderBoxSDF );
-    FragColor = vec4( colorOut, 1.0 );
+    vec3 color = mix( projectedDecal.rgb * showSDFBox, albedoMap.rgb, renderBoxSDF );
+    vec4 colorOut = vec4( color, 1.0 );
 
     vec3 normals = mix( decalsNormals.xyz, normalMap.xyz, renderBoxSDF );
     normals = RNM( normalMap.xyz, normals ) * 0.5 + 0.5;
-    Normal = vec4( mix( normals, normalMap.xyz, 1.-showSDFBox ), 1.0 );
+    vec4 normalOut = vec4( mix( normals, normalMap.xyz, 1.-showSDFBox ), 1.0 );
 
-    Metallic = texture( iMetallic, texCoords );
-    Roughness = texture( iRoughness, texCoords );
+    vec4 metallicOut = texture( iMetallic, texCoords );
+    
+    vec4 roughnessOut = texture( iRoughness, texCoords );
+
+    FragColor = colorOut;
+    Normal    = normalOut;
+    Metallic  = metallicOut;
+    Roughness = roughnessOut;
 }

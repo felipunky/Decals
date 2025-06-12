@@ -12,10 +12,10 @@ in vec3 Normal;
 
 out vec4 FragColor;
 
-uniform sampler2D gNormal;
 uniform sampler2D gAlbedo;
+uniform sampler2D gNormal;
 uniform sampler2D gMetallic;
-//uniform sampler2D gRoughness;
+uniform sampler2D gRoughness;
 //uniform sampler2D gAO;
 
 uniform vec3 viewPos;
@@ -47,8 +47,8 @@ vec3 getNormalFromMap(const in vec2 texCoords)
     vec2 st2 = dFdy(texCoords);
 
     vec3 N   = normalize(Normal);
-    vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
-    vec3 B  = -normalize(cross(N, T));
+    vec3 T   = normalize(Q1*st2.t - Q2*st1.t);
+    vec3 B   = -normalize(cross(N, T));
     mat3 TBN = mat3(T, B, N);
 
     return normalize(TBN * tangentNormal);
@@ -104,6 +104,7 @@ void main()
         texCoordsAlbedo.y = 1. - texCoordsAlbedo.y;
     }
     vec3 albedo = texture(gAlbedo, texCoordsAlbedo).rgb;
+    albedo = pow(albedo, vec3(2.2));
 
     if (iNormals == 1)
     {
@@ -117,10 +118,9 @@ void main()
         vec3 halfWayVector = normalize(L + V);
         if (iPBR)
         {
-            albedo = pow(albedo, vec3(2.2));
             //vec3 H = halfWayVector;
             float metallic  = texture(gMetallic,  texCoordsAlbedo).r;
-            float roughness = 0.8;//texture(gRoughness, texCoordsAlbedo).r;
+            float roughness = texture(gRoughness, texCoordsAlbedo).r;
 
             vec3 F0 = vec3(0.04); 
             F0 = mix(F0, albedo, metallic);
@@ -176,8 +176,9 @@ void main()
             vec3 ambient = 0.1 * albedo;
 
             float dif = max(0.0, dot(L, N));
-            float spe = pow(max(dot(N, halfWayVector), 0.0), 32.0);
-
+            //float spe = pow(max(dot(N, halfWayVector), 0.0), 32.0);
+            float spe = pow(max(dot(reflect(-L, N), V), 0.), 32.);
+            
             vec3 diffuse = albedo * dif;
             vec3 specular = vec3(0.2) * spe;
 
