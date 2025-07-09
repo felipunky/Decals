@@ -239,7 +239,7 @@ enum MODEL
     SHIRT,
     SPHERE
 };
-MODEL currentModel = SPHERE;
+MODEL currentModel = WORKBOOT;
 
 GLenum drawingMode = GL_TRIANGLE_STRIP;
 
@@ -422,18 +422,22 @@ bool isGLTF = false;
 
 void regenerateTextureSpaceFramebuffer(frameBuffer& framebuffer, Shader& shader, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
-    for (size_t i = 0; i < framebuffer.textures.size(); ++i)
+    uint8_t maxIter = framebuffer.textures.size();
+    //uint8_t iWrap = maxIter-1u;
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    for (size_t i = 0; i < maxIter; ++i)
     {
-        glDeleteTextures(1, &(framebuffer.textures[i]));
         
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+        uint8_t idx = i;//iWrap % maxIter;
+        glDeleteTextures(1, &(framebuffer.textures[idx]));
         
-        glGenTextures(1, &(framebuffer.textures[i]));
-        glBindTexture(GL_TEXTURE_2D, framebuffer.textures[i]);
+        glGenTextures(1, &(framebuffer.textures[idx]));
+        glBindTexture(GL_TEXTURE_2D, framebuffer.textures[idx]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         shader.textureWrap(wrapParam);
         shader.textureSample(sampleParam);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[idx], 0);
     }
 }
 
@@ -2202,18 +2206,16 @@ int main()
     fileNames[0].mesh = "Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
     fileNames[0].normal = "Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
-    fileNames[0].metallic = "Assets/Sphere/rustediron2_metallic.png";
-    fileNames[0].roughness = "Assets/Sphere/rustediron2_roughness.png";
-    
+    fileNames[0].metallic = "";//Assets/Sphere/rustediron2_metallic.png";
+    fileNames[0].roughness = "";//Assets/Sphere/rustediron2_roughness.png";
     fileNames[0].decalBaseColor = "Assets/Textures/Watchmen.png";
     fileNames[0].decalNormal = "Assets/Textures/Watchmen_normal.png";
 
     fileNames[1].mesh = "Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
     fileNames[1].normal = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
-    fileNames[1].metallic = "Assets/Sphere/rustediron2_metallic.png";
-    fileNames[1].roughness = "Assets/Sphere/rustediron2_roughness.png";
-    
+    fileNames[1].metallic = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_specular.jpg";
+    fileNames[1].roughness = "Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_rough.jpg";
     fileNames[1].decalBaseColor = "Assets/Textures/Watchmen_2.png";
     fileNames[1].decalNormal = "Assets/Textures/Watchmen_2_normal.png";
 
@@ -2222,25 +2224,22 @@ int main()
     fileNames[2].normal = "Assets/Sphere/rustediron2_normal.png";
     fileNames[2].metallic = "Assets/Sphere/rustediron2_metallic.png";
     fileNames[2].roughness = "Assets/Sphere/rustediron2_roughness.png";
-    
     fileNames[2].decalBaseColor = "Assets/Textures/Watchmen.png";
     fileNames[2].decalNormal = "Assets/Textures/Watchmen_normal.png";
 #else
     fileNames[0].mesh = "../Assets/Pilot/source/PilotShirtDraco.glb";
     fileNames[0].baseColor = "../Assets/Pilot/textures/T_DefaultMaterial_B_1k.jpg";
     fileNames[0].normal = "../Assets/Pilot/textures/T_DefaultMaterial_N_1k.jpg";
-    fileNames[0].metallic = "../Assets/Sphere/rustediron2_metallic.png";
-    fileNames[0].roughness = "../Assets/Sphere/rustediron2_roughness.png";
-    
+    fileNames[0].metallic = "";//../Assets/Sphere/rustediron2_metallic.png";
+    fileNames[0].roughness = "";//../Assets/Sphere/rustediron2_roughness.png";
     fileNames[0].decalBaseColor = "../Assets/Textures/Watchmen.png";
     fileNames[0].decalNormal = "../Assets/Textures/Watchmen_normal.png";
 
     fileNames[1].mesh = "../Assets/CaterpillarWorkboot/source/sh_catWorkBoot_draco.glb";
     fileNames[1].baseColor = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_albedo.jpg";
     fileNames[1].normal = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_nrm.jpg";
-    fileNames[1].metallic = "../Assets/Sphere/rustediron2_metallic.png";
-    fileNames[1].roughness = "../Assets/Sphere/rustediron2_roughness.png";
-    
+    fileNames[1].metallic = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_specular.jpg";
+    fileNames[1].roughness = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_rough.jpg";
     fileNames[1].decalBaseColor = "../Assets/Textures/Watchmen_2.png";
     fileNames[1].decalNormal = "../Assets/Textures/Watchmen_2_normal.png";
     
@@ -2249,7 +2248,6 @@ int main()
     fileNames[2].normal = "../Assets/Sphere/rustediron2_normal.png";
     fileNames[2].metallic = "../Assets/Sphere/rustediron2_metallic.png";
     fileNames[2].roughness = "../Assets/Sphere/rustediron2_roughness.png";
-    
     fileNames[2].decalBaseColor = "../Assets/Textures/Watchmen.png";
     fileNames[2].decalNormal = "../Assets/Textures/Watchmen_normal.png";
     #endif
@@ -2941,21 +2939,24 @@ enum MaterialTextureType
     NORMAL,
     METAL,
     ROUGH,
-    AO
+    AO,
+    DECAL_BASE_COLOR,
+    DECAL_NORMAL
 };
 
-void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams)
+void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams, int textureTypeInt)
 {
     //shader.use();
     //glDeleteTextures(1, &(framebuffer.textures[0]));
     
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    glDeleteTextures(1, &(framebuffer.textures[textureTypeInt]));
     glGenTextures(1, &(framebuffer.textures[0]));
     glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, shader.Width, shader.Height, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + textureTypeInt, GL_TEXTURE_2D, framebuffer.textures[textureTypeInt], 0);
 }
 
 void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
@@ -2980,8 +2981,14 @@ void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
 void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextureType& materialTextureType, frameBuffer& framebuffer, const std::string& fileName)
 {
     shader.use();
-    glDeleteTextures(1, &(framebuffer.textures[0]));
+    //glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+    //glBindFramebuffer(framebuffer.framebuffer);
+    bool isFramebuffer = true;//materialTextureType != DECAL_BASE_COLOR || materialTextureType != DECAL_NORMAL;
     int textureTypeInt = (int)materialTextureType;
+    if (isFramebuffer)
+    {
+        glDeleteTextures(1, &(framebuffer.textures[textureTypeInt]));
+    }
     std::string textureType = "";
     unsigned int* materialType = {};
     isGLTF = false;
@@ -2990,33 +2997,45 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
         // BaseColor
         case 0:
         {
-            textureType = "BaseColor";
+            textureType = "iAlbedo";
             materialType = &(modelData.material.baseColor);
             break;
         }
         // Normal
         case 1:
         {
-            textureType = "Normal";
+            textureType = "iNormal";
             materialType = &(modelData.material.normal);
             break;
         }
         // Metallic
         case 2:
         {
-            textureType = "Metallic";
+            textureType = "iMetallic";
             materialType = &(modelData.material.metallic);
             break;
         }
         // Roughness
         case 3:
         {
-            textureType = "Roughness";
+            textureType = "iRoughness";
             materialType = &(modelData.material.roughness);
             break;
         }
-        // AO
         case 4:
+        {
+            textureType = "iDecalAlbedo";
+            materialType = &(modelData.material.decalBaseColor);
+            break;
+        }
+        case 5:
+        {
+            textureType = "iDecalNormal";
+            materialType = &(modelData.material.decalNormal);
+            break;
+        }
+        // AO
+        case 6:
         {
             textureType = "AO";
             materialType = &(modelData.material.ao);
@@ -3027,34 +3046,55 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
             break;
         }
     }
+    std::cout << "Material: " << textureType << std::endl;
     glDeleteTextures(1, materialType);
     // Make decal recreation prettier some time in the future.
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
-    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
+    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = (isFramebuffer ? Shader::LINEAR : Shader::LINEAR_MIPS);
     shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt, modelData.material.channels[textureTypeInt]);
 
-    FrameBufferTextureParams frameBufferTextureParams;
-    frameBufferTextureParams.INTERNAL_FORMAT = GL_RGBA;
-    frameBufferTextureParams.FORMAT = GL_RGBA;
-    frameBufferTextureParams.TYPE = GL_UNSIGNED_BYTE;
-    regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams);
+    if (isFramebuffer)
+    {
+        FrameBufferTextureParams frameBufferTextureParams;
+        frameBufferTextureParams.INTERNAL_FORMAT = modelData.material.channels[textureTypeInt];
+        frameBufferTextureParams.FORMAT = modelData.material.channels[textureTypeInt];
+        frameBufferTextureParams.TYPE = GL_UNSIGNED_BYTE;
+        regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams, textureTypeInt);
+    }
 }
 
-void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newModelData, frameBuffer& framebuffer, const std::string& fileNameBaseColor, const std::string& fileNameNormal, const std::string& fileNameMetallic, const std::string& fileNameRoughness, const std::string& fileNameDecal, const std::string& fileNameDecalNormal)
+void regenerateModel(ModelData& modelData, Shader& shader, Shader& decalsShader, const ModelData& newModelData, frameBuffer& framebuffer, const ModelFileNames& fileNames)
 {
     ClearModelVertexData(modelData);
     modelData = newModelData;
-    regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNameBaseColor);
-    regenerateTexture(shader, modelData, NORMAL,     framebuffer, fileNameNormal);
-    regenerateTexture(shader, modelData, METAL,      framebuffer, fileNameMetallic);
-    regenerateTexture(shader, modelData, ROUGH,      framebuffer, fileNameRoughness);
-
+    regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNames.baseColor);
+    regenerateTexture(shader, modelData, NORMAL,     framebuffer, fileNames.normal);
+    
+    if (fileNames.metallic != "")
+    {
+        regenerateTexture(shader, modelData, METAL, framebuffer, fileNames.metallic);
+    }
+    else
+    {
+        std::cout << "No data for metallic texture" << std::endl;
+    }
+    if (fileNames.roughness != "")
+    {
+        regenerateTexture(shader, modelData, ROUGH, framebuffer, fileNames.roughness);
+    }
+    else
+    {
+        std::cout << "No data for roughness texture" << std::endl;
+    }
+    /*regenerateTexture(decalsShader, modelData, DECAL_BASE_COLOR, framebuffer, fileNames.decalBaseColor);
+    regenerateTexture(decalsShader, modelData, DECAL_NORMAL, framebuffer, fileNames.decalNormal);*/
+    
     Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
-    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR;
+    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
     glDeleteTextures(1, &(modelData.material.decalBaseColor));
-    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNameDecal, textureWrapParams, textureSampleParams, "iDecalAlbedo", 4, modelData.material.channels[4]);
+    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames.decalBaseColor, textureWrapParams, textureSampleParams, "iDecalAlbedo", 4, modelData.material.channels[4]);
     glDeleteTextures(1, &(modelData.material.decalNormal));
-    decalsPass.createTexture(&(modelData.material.decalNormal), fileNameDecalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData.material.channels[5]);
+    decalsPass.createTexture(&(modelData.material.decalNormal), fileNames.decalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData.material.channels[5]);
     
     float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
@@ -3067,12 +3107,12 @@ void regenerateModel(ModelData& modelData, Shader& shader, const ModelData& newM
              projection, view, false);
 }
 
-void activateAndBindTexturesTexSpaceFramebuffer(frameBuffer& frameBuffer, Shader& shader, const Shader::TEXTURE_WRAP_PARAMS wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS sampleParam)
+void activateAndBindTexturesTexSpaceFramebuffer(frameBuffer& frameBuffer, Shader& shader, const Shader::TEXTURE_WRAP_PARAMS wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS sampleParam, const bool regeneratedModel)
 {
     
     // Some weird thing going on here were I have to wrap around.
     uint8_t maxIter = frameBuffer.textures.size();
-    uint8_t iWrap = maxIter-1u;
+    uint8_t iWrap = (!regeneratedModel ? maxIter-1u : 0u);
     for (uint8_t i = 0u; i < maxIter; ++i)
     {
         glActiveTexture(GL_TEXTURE0 + i);
@@ -3328,8 +3368,9 @@ void main_loop()
         }
     }
     
+    bool regeneratedModel = false;
     static const char* modelsToSelect[]{ "Shirt", "Workboot", "Sphere" };
-    static const char* selectedModel = modelsToSelect[2];
+    static const char* selectedModel = modelsToSelect[1];
     bool selectedModelDirty = ImGui::BeginCombo("Model", selectedModel, 0);
     if (selectedModelDirty)
     {
@@ -3372,13 +3413,17 @@ void main_loop()
         {
             std::cout << "Regenerating model" << std::endl;
 
-            regenerateModel(modelData, geometryPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel].baseColor, fileNames[pickModel].normal, fileNames[pickModel].metallic, fileNames[pickModel].roughness, fileNames[pickModel].decalBaseColor, fileNames[pickModel].decalNormal);
+            //regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+            
+            regenerateModel(modelData, geometryPass, decalsPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel]);
             
             frameJFA = 0;
             downloadImage = 1u;
             regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA, frameBufferTextureParamsSDF);
 
             //regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+            
+            regeneratedModel = true;
         }
     }
     if (showTextures == CURRENT_MODEL)
@@ -3712,7 +3757,6 @@ void main_loop()
 #endif
     }
     /** End Decal Pass **/
-    
     if (showTextures != CURRENT_MODEL)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -3733,7 +3777,7 @@ void main_loop()
         textureSampleParams = Shader::NEAREST;
         fullScreenPass.textureSample(textureSampleParams);
         
-        activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, fullScreenPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+        activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, fullScreenPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, regeneratedModel);
         
         glActiveTexture(GL_TEXTURE0 + 4);
         glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
@@ -3778,7 +3822,7 @@ void main_loop()
         deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
         deferredPass.setBool("iPBR", pbr);
         
-        activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+        activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, regeneratedModel);
         
         deferredPass.setVec3("viewPos", camPos);
         deferredPass.setVec3("lightPos", light.position);
@@ -3882,7 +3926,7 @@ void main_loop()
                                                     -0.064962, 0.388481, -4.221102, 1.000000));*/
             deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
             
-            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, regeneratedModel);
 
             deferredPass.setVec3("viewPos", camPos);
             deferredPass.setVec3("lightPos", light.position);
@@ -3914,7 +3958,7 @@ void main_loop()
                                                     0.0, 0.0, -1.0, 1.0));*/
             deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
             
-            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, regeneratedModel);
 
             deferredPass.setVec3("viewPos", camPos);
             deferredPass.setVec3("lightPos", light.position);

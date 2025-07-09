@@ -119,8 +119,17 @@ void main()
         if (iPBR)
         {
             //vec3 H = halfWayVector;
-            float metallic  = texture(gMetallic,  texCoordsAlbedo).r;
-            float roughness = texture(gRoughness, texCoordsAlbedo).r;
+            float metallic = 0.0;
+            if (textureSize(gMetallic, 0).x > 0)
+            {
+                metallic  = texture(gMetallic,  texCoordsAlbedo).r;
+            }
+            float roughness = 1.0;
+            if (textureSize(gRoughness, 0).x > 0)
+            {
+                roughness = texture(gRoughness, texCoordsAlbedo).r;
+            }
+            //float ao        =
 
             vec3 F0 = vec3(0.04); 
             F0 = mix(F0, albedo, metallic);
