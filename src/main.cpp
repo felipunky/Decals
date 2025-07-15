@@ -420,24 +420,52 @@ FrameBufferTextureParams frameBufferTextureParamsSDF{ GL_RGBA16F, GL_RED, GL_FLO
 
 bool isGLTF = false;
 
+void regenerateFramebufferTexture(frameBuffer& framebuffer, const FrameBufferTextureParams& textureParams, Shader& shader, 
+                                  const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam, const int& index)
+{
+    //glDeleteTextures(1, &(framebuffer.textures[index]));
+
+    glGenTextures(1, &(framebuffer.textures[index]));
+    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[index]);
+	glTexImage2D(GL_TEXTURE_2D, 0, textureParams.INTERNAL_FORMAT, shader.Width, shader.Height, 0, textureParams.FORMAT, textureParams.TYPE, NULL);
+    shader.textureWrap(wrapParam);
+    shader.textureSample(sampleParam);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + ((GLenum)index), GL_TEXTURE_2D, framebuffer.textures[index], 0);
+
+    // Check framebuffer texture creation.
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status == GL_FRAMEBUFFER_COMPLETE) 
+    {
+        std::cout << "Framebuffer is complete!" << std::endl;
+    }
+    else 
+    {
+        std::cerr << "Framebuffer is not complete. Status: " << status << std::endl;
+        // Handle incomplete framebuffer (e.g., log more details, exit)
+    }
+}
+
 void regenerateTextureSpaceFramebuffer(frameBuffer& framebuffer, Shader& shader, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
     uint8_t maxIter = framebuffer.textures.size();
     //uint8_t iWrap = maxIter-1u;
     
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+
+    FrameBufferTextureParams fboTextureParams = { GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE };
     for (size_t i = 0; i < maxIter; ++i)
     {
-        
-        uint8_t idx = i;//iWrap % maxIter;
-        glDeleteTextures(1, &(framebuffer.textures[idx]));
-        
-        glGenTextures(1, &(framebuffer.textures[idx]));
-        glBindTexture(GL_TEXTURE_2D, framebuffer.textures[idx]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        shader.textureWrap(wrapParam);
-        shader.textureSample(sampleParam);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer.textures[idx], 0);
+        regenerateFramebufferTexture(framebuffer, fboTextureParams, shader, wrapParam, sampleParam, (int)i);
+        //
+        //uint8_t idx = i;//iWrap % maxIter;
+        //glDeleteTextures(1, &(framebuffer.textures[idx]));
+        //
+        //glGenTextures(1, &(framebuffer.textures[idx]));
+        //glBindTexture(GL_TEXTURE_2D, framebuffer.textures[idx]);
+        //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        //shader.textureWrap(wrapParam);
+        //shader.textureSample(sampleParam);
+        //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + ((GLenum) i), GL_TEXTURE_2D, framebuffer.textures[idx], 0);
     }
 }
 
@@ -593,7 +621,7 @@ extern "C"
         std::cout << "Reading albedo from file!" << std::endl;
         std::cout << "Albedo buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
+        geometryPass.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "iAlbedo", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeAlbedo(uint16_t* buf, int bufSize)
@@ -2026,7 +2054,7 @@ void createAndAttachTextureSpaceRbo(const ModelData& modelData, Shader& shader, 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
         shader.textureWrap(wrapParam);
         shader.textureSample(sampleParam);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0+i, GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, /*GL_COLOR_ATTACHMENT0 + i*/drawBuffersFBO[i], GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
     }
 
     // Set the list of draw buffers.
@@ -2320,6 +2348,8 @@ int main()
     //std::cout << "Number of channels in iMetallic: " << modelData.material.channels[2] << std::endl;
     geometryPass.createTexture(&(modelData.material.roughness), fileNames[pick].roughness, textureWrapParams, textureSampleParams, "iRoughness", 3, modelData.material.channels[3]);
     //std::cout << "Number of channels in iRoughness: " << modelData.material.channels[3] << std::endl;
+    geometryPass.setBool("iMetal", true);
+    geometryPass.setBool("iRough", true);
 
     /**
      *  End Create Model Textures
@@ -2944,21 +2974,6 @@ enum MaterialTextureType
     DECAL_NORMAL
 };
 
-void regenerateFramebufferTexture(const Shader& shader, frameBuffer& framebuffer, const FrameBufferTextureParams& frameBufferTextureParams, int textureTypeInt)
-{
-    //shader.use();
-    //glDeleteTextures(1, &(framebuffer.textures[0]));
-    
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-    glDeleteTextures(1, &(framebuffer.textures[textureTypeInt]));
-    glGenTextures(1, &(framebuffer.textures[0]));
-    glBindTexture(GL_TEXTURE_2D, framebuffer.textures[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, frameBufferTextureParams.INTERNAL_FORMAT, shader.Width, shader.Height, 0, frameBufferTextureParams.FORMAT, frameBufferTextureParams.TYPE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + textureTypeInt, GL_TEXTURE_2D, framebuffer.textures[textureTypeInt], 0);
-}
-
 void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
 {
     glDeleteTextures(1, &(framebuffer.textures[0]));
@@ -2987,7 +3002,7 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
     int textureTypeInt = (int)materialTextureType;
     if (isFramebuffer)
     {
-        glDeleteTextures(1, &(framebuffer.textures[textureTypeInt]));
+        //glDeleteTextures(1, &(framebuffer.textures[textureTypeInt]));
     }
     std::string textureType = "";
     unsigned int* materialType = {};
@@ -3047,44 +3062,67 @@ void regenerateTexture(Shader& shader, ModelData& modelData, const MaterialTextu
         }
     }
     std::cout << "Material: " << textureType << std::endl;
+    //std::cout << "P: " << &(modelData.material.baseColor) << " P1: " << materialType << std::endl;
     glDeleteTextures(1, materialType);
-    // Make decal recreation prettier some time in the future.
-    Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
-    Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = (isFramebuffer ? Shader::LINEAR : Shader::LINEAR_MIPS);
-    shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt, modelData.material.channels[textureTypeInt]);
 
     if (isFramebuffer)
     {
-        FrameBufferTextureParams frameBufferTextureParams;
+        /*FrameBufferTextureParams frameBufferTextureParams;
         frameBufferTextureParams.INTERNAL_FORMAT = modelData.material.channels[textureTypeInt];
         frameBufferTextureParams.FORMAT = modelData.material.channels[textureTypeInt];
         frameBufferTextureParams.TYPE = GL_UNSIGNED_BYTE;
-        regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams, textureTypeInt);
+        regenerateFramebufferTexture(shader, framebuffer, frameBufferTextureParams, textureTypeInt);*/
+		Shader::TEXTURE_WRAP_PARAMS wrapParams = Shader::CLAMP_TO_EDGE;
+        Shader::TEXTURE_SAMPLE_PARAMS sampleParams = Shader::LINEAR_MIPS;
+        //regenerateTextureSpaceFramebuffer(framebuffer, shader, wrapParams, sampleParams);
+        shader.createTexture(materialType, fileName, wrapParams, sampleParams, textureType, textureTypeInt, modelData.material.channels[textureTypeInt]);
+        //shader.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "BaseColor", 0);
+
+		std::cout << "Channels: " << modelData.material.channels[textureTypeInt] << std::endl;
+
+        FrameBufferTextureParams fboTextureParams = { modelData.material.channels[textureTypeInt], modelData.material.channels[textureTypeInt], GL_UNSIGNED_BYTE };
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+        regenerateFramebufferTexture(framebuffer, fboTextureParams, shader, wrapParams, sampleParams, textureTypeInt);
+
     }
+    // Make decal recreation prettier some time in the future.
+    //Shader::TEXTURE_WRAP_PARAMS textureWrapParams = Shader::CLAMP_TO_EDGE;
+    //Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = (isFramebuffer ? Shader::LINEAR : Shader::LINEAR_MIPS);
+    //shader.createTexture(materialType, fileName, textureWrapParams, textureSampleParams, textureType, textureTypeInt, modelData.material.channels[textureTypeInt]);
 }
 
-void regenerateModel(ModelData& modelData, Shader& shader, Shader& decalsShader, const ModelData& newModelData, frameBuffer& framebuffer, const ModelFileNames& fileNames)
+void regenerateModel(ModelData& modelData, Shader& shader, Shader& decalsShader, const ModelData& newModelData, frameBuffer& framebuffer, const std::vector<ModelFileNames>& fileNamesVector, const int& pickModel)
 {
     ClearModelVertexData(modelData);
     modelData = newModelData;
+
+	ModelFileNames fileNames = fileNamesVector[pickModel];
     regenerateTexture(shader, modelData, BASE_COLOR, framebuffer, fileNames.baseColor);
     regenerateTexture(shader, modelData, NORMAL,     framebuffer, fileNames.normal);
     
     if (fileNames.metallic != "")
     {
         regenerateTexture(shader, modelData, METAL, framebuffer, fileNames.metallic);
+        shader.setBool("iMetal", true);
     }
     else
     {
         std::cout << "No data for metallic texture" << std::endl;
+		std::cout << "Filename metallic: " << fileNamesVector[2].metallic << std::endl;
+        regenerateTexture(shader, modelData, METAL, framebuffer, fileNamesVector[2].metallic);
+        shader.setBool("iMetal", !false);
     }
     if (fileNames.roughness != "")
     {
         regenerateTexture(shader, modelData, ROUGH, framebuffer, fileNames.roughness);
+        shader.setBool("iRough", true);
     }
     else
     {
         std::cout << "No data for roughness texture" << std::endl;
+        std::cout << "Filename roughness: " << fileNamesVector[2].roughness << std::endl;
+        shader.setBool("iRough", !false);
+        regenerateTexture(shader, modelData, ROUGH, framebuffer, fileNamesVector[2].roughness);
     }
     /*regenerateTexture(decalsShader, modelData, DECAL_BASE_COLOR, framebuffer, fileNames.decalBaseColor);
     regenerateTexture(decalsShader, modelData, DECAL_NORMAL, framebuffer, fileNames.decalNormal);*/
@@ -3115,8 +3153,8 @@ void activateAndBindTexturesTexSpaceFramebuffer(frameBuffer& frameBuffer, Shader
     uint8_t iWrap = (!regeneratedModel ? maxIter-1u : 0u);
     for (uint8_t i = 0u; i < maxIter; ++i)
     {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[iWrap % maxIter]);
+        glActiveTexture(GL_TEXTURE0 + ((GLenum)i));
+        glBindTexture(GL_TEXTURE_2D, frameBuffer.textures[i]);// iWrap% maxIter]);
         
         // Set sampling and wrapping modes.
         shader.textureWrap(wrapParam);
@@ -3415,7 +3453,7 @@ void main_loop()
 
             //regenerateTextureSpaceFramebuffer(textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
             
-            regenerateModel(modelData, geometryPass, decalsPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames[pickModel]);
+            regenerateModel(modelData, geometryPass, decalsPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames, pickModel);
             
             frameJFA = 0;
             downloadImage = 1u;

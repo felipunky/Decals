@@ -24,6 +24,8 @@ uniform float iTime;
 uniform float iFlipAlbedo;
 uniform int iNormals;
 uniform bool iPBR;
+uniform bool iMetal;
+uniform bool iRough;
 
 const float PI = 3.14159265359;
 
@@ -120,12 +122,12 @@ void main()
         {
             //vec3 H = halfWayVector;
             float metallic = 0.0;
-            if (textureSize(gMetallic, 0).x > 0)
+            if (iMetal)//textureSize(gMetallic, 0).x > 0)
             {
                 metallic  = texture(gMetallic,  texCoordsAlbedo).r;
             }
             float roughness = 1.0;
-            if (textureSize(gRoughness, 0).x > 0)
+            if (iRough)//textureSize(gRoughness, 0).x > 0)
             {
                 roughness = texture(gRoughness, texCoordsAlbedo).r;
             }
