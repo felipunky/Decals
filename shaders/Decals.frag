@@ -3,10 +3,10 @@ precision highp float;
 in vec3 WorldPos;
 in vec2 TexCoords;
 
-// Uncomment the following for Mac and Windows builds.
-//#define __EMSCRIPTEN__
+// Uncomment the following for Mac and EMCC builds.
+#define EMCC
 
-#ifdef __EMSCRIPTEN__
+#ifdef EMCC
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 Normal;
 layout(location = 2) out vec4 Metallic;

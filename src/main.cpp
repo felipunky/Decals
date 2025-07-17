@@ -412,10 +412,10 @@ Shader::TEXTURE_SAMPLE_PARAMS textureSampleParamsDecalOutputs = Shader::LINEAR;
 
 #ifdef __EMSCRIPTEN__
 FrameBufferTextureParams frameBufferTextureParamsJFA{ GL_RGBA16F, GL_RGBA, GL_FLOAT };
-FrameBufferTextureParams frameBufferTextureParamsSDF{ GL_RGBA16F, GL_RED, GL_FLOAT };
+FrameBufferTextureParams frameBufferTextureParamsSDF{ GL_R16F, GL_RED, GL_FLOAT };
 #else
 FrameBufferTextureParams frameBufferTextureParamsJFA{ GL_RGBA32F, GL_RGBA, GL_FLOAT };
-FrameBufferTextureParams frameBufferTextureParamsSDF{ GL_RGBA16F, GL_RED, GL_FLOAT };
+FrameBufferTextureParams frameBufferTextureParamsSDF{ GL_R32F, GL_RED, GL_FLOAT };
 #endif
 
 bool isGLTF = false;
