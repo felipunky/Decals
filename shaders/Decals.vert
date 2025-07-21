@@ -29,10 +29,10 @@ void main()
     Position.y = 1. - Position.y;
     TexCoords.y = 1. - TexCoords.y;
   }
-  if (iFlipper == 1)
+  /*if (iFlipper == 1)
   {
     TexCoords.y = 1. - TexCoords.y;
-  }
+  }*/
   Position.xy = Position.xy * 2. - 1.;
   gl_Position = Position;              
 }                                                      

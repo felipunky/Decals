@@ -1,4 +1,5 @@
-precision mediump float;
+//precision mediump float;
+precision highp float;
 
 in vec3 VertexPosition;
 in vec3 VertexNormals;

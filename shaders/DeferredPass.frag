@@ -1,6 +1,7 @@
 // Heavily inspired by https://learnopengl.com/code_viewer_gh.php?code=src/6.pbr/1.2.lighting_textured/1.2.pbr.fs
 
-precision mediump float;
+//precision mediump float;
+precision highp float;
 
 in vec3 Positions;                               
 in vec2 TexCoords;
@@ -24,8 +25,6 @@ uniform float iTime;
 uniform float iFlipAlbedo;
 uniform int iNormals;
 uniform bool iPBR;
-uniform bool iMetal;
-uniform bool iRough;
 
 const float PI = 3.14159265359;
 
@@ -120,17 +119,9 @@ void main()
         vec3 halfWayVector = normalize(L + V);
         if (iPBR)
         {
-            //vec3 H = halfWayVector;
-            float metallic = 0.0;
-            if (iMetal)//textureSize(gMetallic, 0).x > 0)
-            {
-                metallic  = texture(gMetallic,  texCoordsAlbedo).r;
-            }
-            float roughness = 1.0;
-            if (iRough)//textureSize(gRoughness, 0).x > 0)
-            {
-                roughness = texture(gRoughness, texCoordsAlbedo).r;
-            }
+            float metallic = texture(gMetallic,  texCoordsAlbedo).r;
+
+            float roughness = texture(gRoughness, texCoordsAlbedo).r;
             //float ao        =
 
             vec3 F0 = vec3(0.04); 

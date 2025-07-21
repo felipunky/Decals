@@ -4,7 +4,7 @@ in vec3 WorldPos;
 in vec2 TexCoords;
 
 // Uncomment the following for Mac and EMCC builds.
-#define EMCC
+//#define EMCC
 
 #ifdef EMCC
 layout(location = 0) out vec4 FragColor;
@@ -34,6 +34,8 @@ uniform float iBlend;
 uniform float iSmoothness;
 uniform bool iAlpha;
 uniform bool iShowSDFBox;
+uniform bool iMetal;
+uniform bool iRough;
 
 // Albedo
 uniform sampler2D iAlbedo;
@@ -87,7 +89,7 @@ void main()
 
     vec3 boxSize = vec3(0.5) + iBlend * maxReciprocalDecalResolution;
     float depth = texture(iDepth, decalUV.xy).r;
-    if (abs(decalUV.z - bias) > (depth))
+    if (abs(decalUV.z - bias) > depth)
     {
         boxSize.z = 0.;
     }
@@ -132,12 +134,27 @@ void main()
     normals = RNM( normalMap.xyz, normals ) * 0.5 + 0.5;
     vec4 normalOut = vec4( mix( normals, normalMap.xyz, 1.-showSDFBox ), 1.0 );
 
-    vec4 metallicOut = texture( iMetallic, texCoords );
-    
-    vec4 roughnessOut = texture( iRoughness, texCoords );
+    vec4 metallicOut = vec4(0.);
+    if (iMetal)
+    {
+        metallicOut = texture( iMetallic, texCoords );
+    }
+    else
+    {
+        metallicOut = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    vec4 roughnessOut = vec4(1.);
+    if (iRough)
+    {
+        roughnessOut = texture( iRoughness, texCoords );
+    }
+    else
+    {
+        roughnessOut = vec4(1.0, 1.0, 1.0, 1.0);
+    }
 
-    FragColor = colorOut;
-    Normal    = normalOut;
+    FragColor = /*albedoMap;//*/colorOut;
+    Normal    = /*normalMap;//*/normalOut;
     Metallic  = metallicOut;
     Roughness = roughnessOut;
 }

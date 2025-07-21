@@ -3,7 +3,11 @@ Normal=0
 Metallic=1
 Roughness=2
 
-TODOs:
+TODOs
+	-Implement zoom for 2D maps (ex. Albedo Display)
+	-Add linear filtering to WASM build.
+	-Fix weird artifacts on texture space (lines).
+	-Fix texture download gamma on albedo and proper ranges for the normal maps.
 	-Fix model changing on the PBR branch.
 	-Set dynamic picking of tangent space normals between shader and precomputed ones
 	-Set SDF frame buffer texture to be GL_RED
@@ -42,6 +46,8 @@ TODOs:
 	-Investigate whether or not the textures should be linearized (albedo normal).
 
 DONEs:
+	-Add mipmaps to fbo textures.
+
 	-Fix GL_INVALID_ENUM: glTexParameteri: Texture filter not recognized.
 
 	-Add normal mapping support from decals
