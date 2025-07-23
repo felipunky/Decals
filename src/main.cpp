@@ -240,6 +240,7 @@ enum MODEL
 {
     WORKBOOT,
     SHIRT,
+    JACKET,
     SPHERE
 };
 MODEL currentModel = SPHERE;
@@ -329,7 +330,7 @@ struct ModelData
     OpenGLObject openGLObject;
 };
 
-ModelData modelData;
+std::vector<ModelData> modelData;
 
 struct ModelFileNames
 {
@@ -343,8 +344,8 @@ struct ModelFileNames
                 decalNormal;
 };
 
-std::vector<ModelFileNames> fileNames(3);
-std::vector<ModelData> modelsData(fileNames.size());
+std::vector<ModelFileNames> fileNames(4);
+std::vector<std::vector<ModelData>> modelsData(fileNames.size());
 
 const void printModelData(const ModelData& modelData)
 {
@@ -364,9 +365,17 @@ const void printModelData(const ModelData& modelData)
     std::endl;
 }
 
-void reloadModel(ModelData& modelData);
-void ObjLoader(std::string inputFile, ModelData& modelData);
-void loadGLTF(tinygltf::Model& model, ModelData& modelData);
+const void printModelData(const std::vector<ModelData>& modelData)
+{
+    for (const auto& model : modelData)
+    {
+        printModelData(model);
+    }
+}
+
+void reloadModel(std::vector<ModelData>& modelData);
+void ObjLoader(std::string inputFile, std::vector<ModelData>& modelData);
+void loadGLTF(tinygltf::Model& model, std::vector<ModelData>& modelData);
 
 struct frameBuffer
 {
@@ -468,21 +477,11 @@ void regenerateTextureSpaceFramebuffer(ModelData& modelData, frameBuffer& frameb
     for (size_t i = 0; i < maxIter; ++i)
     {
         regenerateFramebufferTexture(framebuffer, fboTextureParams, shader, wrapParam, sampleParam, (int)i);
-        //
-        //uint8_t idx = i;//iWrap % maxIter;
-        //glDeleteTextures(1, &(framebuffer.textures[idx]));
-        //
-        //glGenTextures(1, &(framebuffer.textures[idx]));
-        //glBindTexture(GL_TEXTURE_2D, framebuffer.textures[idx]);
-        //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shader.Width, shader.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        //shader.textureWrap(wrapParam);
-        //shader.textureSample(sampleParam);
-        //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + ((GLenum) i), GL_TEXTURE_2D, framebuffer.textures[idx], 0);
     }
 }
 
 void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight, 
-              /* In and Out */ ModelData& modelData,
+              /* In and Out */ std::vector<ModelData>& modelData,
               const glm::mat4& projection, const glm::mat4& view, const bool& debug);
 
 // We need this so that we don't need to add each module to the Emscripten build.
@@ -549,9 +548,6 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE
     void passObj(char* buf)
     {
-        //std::cout << "New mesh content: " << buf << std::endl;
-        //clearBBox(bboxMin, bboxMax, centroid);
-        std::cout << "BBox Cleared Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
         std::string result = buf;
         ObjLoader(result, modelData);
         reloadModel(modelData);
@@ -569,10 +565,10 @@ extern "C"
         glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
             
         frameJFA = 0;
-        decalsPass.createTextureFromFile(&(modelData.material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
+        decalsPass.createTextureFromFile(&(modelData[0].material.decalBaseColor), buf, decalsPass.Width, decalsPass.Height, "iChannel0", 1);
         regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA, frameBufferTextureParamsSDF);
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
-                 /* In and Out */ modelData, 
+                 /* In and Out */ modelData,
                  projection, view, false);
         downloadImage = 1u;
     }
@@ -603,10 +599,10 @@ extern "C"
         glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / jfaFactor, decalsPass.Height / jfaFactor);
             
         frameJFA = 0;
-        decalsPass.createTextureFromFile(&(modelData.material.decalNormal), buf, decalsPass.Width, decalsPass.Height, "iChannel2", 4);
+        decalsPass.createTextureFromFile(&(modelData[0].material.decalNormal), buf, decalsPass.Width, decalsPass.Height, "iChannel2", 4);
         regenerateAllFramebufferTexturesJFA(jfaFrameBuffer, sdfFramebuffer, widthHeightJFA, frameBufferTextureParamsJFA, frameBufferTextureParamsSDF);
         rayTrace(mousePositionX + (splitScreen ? WIDTH / 4 : 0), mousePositionY, widthHeight, 
-                 /* In and Out */ modelData, 
+                 /* In and Out */ modelData,
                  projection, view, false);
         downloadImage = 1u;
     }
@@ -633,7 +629,7 @@ extern "C"
         std::cout << "Reading albedo from file!" << std::endl;
         std::cout << "Albedo buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(modelData.material.baseColor), buf, geometryPass.Width, geometryPass.Height, "iAlbedo", 0);
+        geometryPass.createTextureFromFile(&(modelData[0].material.baseColor), buf, geometryPass.Width, geometryPass.Height, "iAlbedo", 0);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeAlbedo(uint16_t* buf, int bufSize)
@@ -654,8 +650,8 @@ extern "C"
 #else
         std::cout << "Albedo size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(modelData.material.baseColor));
-        regenerateTextureSpaceFramebuffer(modelData, textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+        glDeleteTextures(1, &(modelData[0].material.baseColor));
+        regenerateTextureSpaceFramebuffer(modelData[0], textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
         
 #ifdef OPTIMIZE
 #else
@@ -672,7 +668,7 @@ extern "C"
         std::cout << "Reading normal from file!" << std::endl;
         std::cout << "Normal buffer size: " << bufSize << std::endl;
 #endif
-        geometryPass.createTextureFromFile(&(modelData.material.normal), buf, geometryPass.Width, geometryPass.Height, "Normal", 1);
+        geometryPass.createTextureFromFile(&(modelData[0].material.normal), buf, geometryPass.Width, geometryPass.Height, "Normal", 1);
     }
     EMSCRIPTEN_KEEPALIVE
     void passSizeNormal(uint16_t* buf, int bufSize)
@@ -690,12 +686,12 @@ extern "C"
 #else
         std::cout << "Normal size changed regenerating glTexImage2D" << std::endl;
 #endif
-        glDeleteTextures(1, &(modelData.material.normal));
+        glDeleteTextures(1, &(modelData[0].material.normal));
 
         geometryPass.Width  = width;
         geometryPass.Height = height;
 
-        regenerateTextureSpaceFramebuffer(modelData, textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
+        regenerateTextureSpaceFramebuffer(modelData[0], textureSpaceFramebuffer, geometryPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs);
 #ifdef OPTIMIZE
 #else
         std::cout << "Normal Width: "  << +geometryPass.Width  << std::endl;
@@ -823,9 +819,9 @@ std::array<glm::vec3, 8> cubeCorners(const glm::vec3& min, const glm::vec3& max)
     return kCubeCorners;
 }
 
-void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight, 
-              /* In and Out */ ModelData& modelData,
-              const glm::mat4& projection, const glm::mat4& view, const bool& debug)
+void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::vec2& widthHeight,
+    /* In and Out */ std::vector<ModelData>& modelData,
+    const glm::mat4& projection, const glm::mat4& view, const bool& debug)
 {
     if (debug)
     {
@@ -833,93 +829,77 @@ void rayTrace(const int& mousePositionX, const int& mousePositionY, const glm::v
         std::cout << "mousePositionX: " << mousePositionX << " \n" <<
             "mousePositionY: " << mousePositionY << std::endl;
     }
-    
+
     // https://stackoverflow.com/questions/53467077/opengl-ray-tracing-using-inverse-transformations
     glm::vec2 normalizedMouse = glm::vec2(2.0f, 2.0f) * glm::vec2(mousePositionX, mousePositionY) / widthHeight;
     float x_ndc = normalizedMouse.x - 1.0;
     float y_ndc = 1.0 - normalizedMouse.y; // flipped
 
     glm::vec4 p_near_ndc = glm::vec4(x_ndc, y_ndc, -1.0f, 1.0f); // z near = -1
-    glm::vec4 p_far_ndc  = glm::vec4(x_ndc, y_ndc,  1.0f, 1.0f); // z far = 1
+    glm::vec4 p_far_ndc = glm::vec4(x_ndc, y_ndc, 1.0f, 1.0f); // z far = 1
 
-    glm::mat4 invMVP = glm::inverse(projection * view * modelData.modelMatrix);
-
-    glm::vec4 p_near_h = invMVP * p_near_ndc;
-    glm::vec4 p_far_h  = invMVP * p_far_ndc;
-
-    glm::vec3 p0 = glm::vec3(p_near_h) / glm::vec3(p_near_h.w, p_near_h.w, p_near_h.w);
-    glm::vec3 p1 = glm::vec3(p_far_h)  / glm::vec3(p_far_h.w, p_far_h.w, p_far_h.w);
-
-    glm::vec3 rayOri = p0;
-    glm::vec3 rayDir = glm::normalize(p1 - p0);
-
-    nanort::Ray<float> ray;
-    ray.org[0] = rayOri.x;
-    ray.org[1] = rayOri.y;
-    ray.org[2] = rayOri.z;
-
-    ray.dir[0] = rayDir.x;
-    ray.dir[1] = rayDir.y;
-    ray.dir[2] = rayDir.z;
-
-    float kFar = 1.0e+30f;
-    ray.min_t = 0.0f;
-    ray.max_t = kFar;
-
-    nanort::TriangleIntersector<> triangle_intersector(glm::value_ptr(modelData.vertices[0]), &(modelData.indexes[0]), sizeof(float) * 3);
-    nanort::TriangleIntersection<> isect;
-    bool hit = modelData.bvo.accel.Traverse(ray, triangle_intersector, &isect);
-    if (hit)
+    for (size_t i = 0; i < modelData.size(); ++i)
     {
-        modelData.bvo.hitPos = rayOri + rayDir * isect.t;
-        
-        unsigned int fid = isect.prim_id;
-        unsigned int id  = modelData.indexes[3 * fid];
-        modelData.bvo.hitNor = modelData.normals[id];
-
-        projectorPos = modelData.bvo.hitPos + modelData.bvo.hitNor * PROJECTOR_DISTANCE;
-        projectorDir = -modelData.bvo.hitNor;
-
-        float ratio = float(decalsPass.Height) / float(decalsPass.Width);
-        float proportionateHeight = projectorSize * ratio;
-
-        glm::mat4 rotate = glm::mat4(1.0f);
-        rotate = glm::rotate(rotate, glm::radians(projectorRotation), projectorDir);
-
-        glm::vec4 axis                = rotate * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
-        glm::mat4 projectorView       = glm::lookAt(projectorPos, modelData.bvo.hitPos, axis.xyz());
-        glm::mat4 projectorProjection = glm::ortho(-projectorSize, projectorSize, -proportionateHeight, proportionateHeight, 1e-5f, FAR_PLANE);
-
-        modelData.bvo.decalProjector = projectorProjection * projectorView;
-        if (debug)
+        if (modelData[i].bvo.isTracing)
         {
-            printf("Hit Point: %s\n", glm::to_string(modelData.bvo.hitPos).c_str());
-            printf("Hit Normal: %s\n", glm::to_string(modelData.bvo.hitNor).c_str());
-            printf("Decal Projector: %s\n", glm::to_string(modelData.bvo.decalProjector).c_str());
+            glm::mat4 invMVP = glm::inverse(projection * view * modelData[i].modelMatrix);
+
+            glm::vec4 p_near_h = invMVP * p_near_ndc;
+            glm::vec4 p_far_h = invMVP * p_far_ndc;
+
+            glm::vec3 p0 = glm::vec3(p_near_h) / glm::vec3(p_near_h.w, p_near_h.w, p_near_h.w);
+            glm::vec3 p1 = glm::vec3(p_far_h) / glm::vec3(p_far_h.w, p_far_h.w, p_far_h.w);
+
+            glm::vec3 rayOri = p0;
+            glm::vec3 rayDir = glm::normalize(p1 - p0);
+
+            nanort::Ray<float> ray;
+            ray.org[0] = rayOri.x;
+            ray.org[1] = rayOri.y;
+            ray.org[2] = rayOri.z;
+
+            ray.dir[0] = rayDir.x;
+            ray.dir[1] = rayDir.y;
+            ray.dir[2] = rayDir.z;
+
+            float kFar = 1.0e+30f;
+            ray.min_t = 0.0f;
+            ray.max_t = kFar;
+
+            nanort::TriangleIntersector<> triangle_intersector(glm::value_ptr(modelData[i].vertices[0]), &(modelData[i].indexes[0]), sizeof(float) * 3);
+            nanort::TriangleIntersection<> isect;
+            bool hit = modelData[i].bvo.accel.Traverse(ray, triangle_intersector, &isect);
+            if (hit)
+            {
+                modelData[i].bvo.hitPos = rayOri + rayDir * isect.t;
+
+                unsigned int fid = isect.prim_id;
+                unsigned int id = modelData[i].indexes[3 * fid];
+                modelData[i].bvo.hitNor = modelData[i].normals[id];
+
+                projectorPos = modelData[i].bvo.hitPos + modelData[i].bvo.hitNor * PROJECTOR_DISTANCE;
+                projectorDir = -modelData[i].bvo.hitNor;
+
+                float ratio = float(decalsPass.Height) / float(decalsPass.Width);
+                float proportionateHeight = projectorSize * ratio;
+
+                glm::mat4 rotate = glm::mat4(1.0f);
+                rotate = glm::rotate(rotate, glm::radians(projectorRotation), projectorDir);
+
+                glm::vec4 axis = rotate * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+                glm::mat4 projectorView = glm::lookAt(projectorPos, modelData[i].bvo.hitPos, axis.xyz());
+                glm::mat4 projectorProjection = glm::ortho(-projectorSize, projectorSize, -proportionateHeight, proportionateHeight, 1e-5f, FAR_PLANE);
+
+                modelData[i].bvo.decalProjector = projectorProjection * projectorView;
+                if (debug)
+                {
+                    printf("Hit Point: %s\n", glm::to_string(modelData[i].bvo.hitPos).c_str());
+                    printf("Hit Normal: %s\n", glm::to_string(modelData[i].bvo.hitNor).c_str());
+                    printf("Decal Projector: %s\n", glm::to_string(modelData[i].bvo.decalProjector).c_str());
+                }
+            }
         }
     }
-}
-
-// Returns near .x far .y
-glm::vec3 calculateNearFarPlane()
-{
-    // https://community.khronos.org/t/automatically-center-3d-object/20892/6
-    //glm::vec3 nearFarPlaneBSphere = bboxMax - centroid;
-    glm::vec3 nearFarPlaneBSphere = glm::vec3(modelData.Bbox.centroid.x, modelData.Bbox.centroid.y, modelData.Bbox.bboxMin.z) -
-                                    glm::vec3(modelData.Bbox.centroid.x, modelData.Bbox.centroid.y, modelData.Bbox.bboxMax.z);
-    float r = glm::length(nearFarPlaneBSphere);
-    //float r = glm::dot(nearFarPlaneBSphere, nearFarPlaneBSphere);
-
-    float fDistance = r / 0.57735f; // where 0.57735f is tan(30 degrees)
-    // The near and far clipping planes then lay either side of this point, allwoing for the radius of the sphere. So -
-    // dNear = fDistance - r;
-    // dFar  = fDistance + r;
-    glm::vec2 result = glm::vec2(fDistance, fDistance) + glm::vec2(-r, r);
-    /*near          = result.x;
-    far           = result.y;
-    focalDistance = fDistance;
-    radius        = r;*/
-    return nearFarPlaneBSphere;
 }
 
 void renderLineStrip(glm::vec3* vertices, const int& count)
@@ -1029,8 +1009,29 @@ void renderQuad()
     glBindVertexArray(0);
 }
 
-void ClearModelVertexData(ModelData& modelData);
-void ComputeTangents(ModelData& modelData);
+void ClearModelVertexData(ModelData& modelData)
+{
+    modelData.vertices.clear();
+    modelData.normals.clear();
+    modelData.textureCoordinates.clear();
+    modelData.tangents.clear();
+    modelData.indexes.clear();
+    modelData.Bbox.bboxMin = glm::vec3(1e+5);
+    modelData.Bbox.bboxMax = glm::vec3(-1e+5);
+    modelData.Bbox.centroid = glm::vec3(0.0f);
+    modelData.modelMatrix = glm::mat4(1.0f);
+    modelData.bvo.isTracing = false;
+    modelData.bvo.decalProjector = glm::mat4(1.0f);
+}
+
+void ClearModelsVertexData(std::vector<ModelData>& modelData)
+{
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        ClearModelVertexData(modelData[i]);
+    }
+}
+//void ComputeTangents(std::vector<ModelData>& modelData);
 
 // https://learnopengl.com/code_viewer_gh.php?code=src/6.pbr/1.2.lighting_textured/lighting_textured.cpp
 void renderSphere(ModelData& modelData)
@@ -1366,25 +1367,8 @@ void ComputeTangents(ModelData& modelData)
     tan2.clear();
 }
 
-void ClearModelVertexData(ModelData& modelData)
+void ObjLoader(std::string inputFile, std::vector<ModelData>& modelData)
 {
-    modelData.vertices.clear();
-    modelData.normals.clear();
-    modelData.textureCoordinates.clear();
-    modelData.tangents.clear();
-    modelData.indexes.clear();
-    modelData.Bbox.bboxMin  = glm::vec3(1e+5);
-    modelData.Bbox.bboxMax  = glm::vec3(-1e+5);
-    modelData.Bbox.centroid = glm::vec3(0.0f);
-    modelData.modelMatrix   = glm::mat4(1.0f);
-    modelData.bvo.isTracing = false;
-    modelData.bvo.decalProjector = glm::mat4(1.0f);
-}
-
-void ObjLoader(std::string inputFile, ModelData& modelData)
-{
-    ClearModelVertexData(modelData);
-
     std::istringstream stream = std::istringstream(inputFile);
     //std::cout << stream.str() << std::endl;
     tinyobj::attrib_t attrib;
@@ -1412,10 +1396,12 @@ void ObjLoader(std::string inputFile, ModelData& modelData)
 
     std::unordered_map<std::bitset<256>, uint32_t> uniqueVertices;
 
+	uint16_t meshNumber = 0;
     uint32_t counter = 0;
-
+    modelData.resize(shapes.size());
     for (const auto& shape : shapes)
     {
+		ClearModelVertexData(modelData[meshNumber]);
         for (const auto& index : shape.mesh.indices)
         {
             glm::vec3 position{
@@ -1432,13 +1418,13 @@ void ObjLoader(std::string inputFile, ModelData& modelData)
             // Fix this.
             if (true)
             {
-                modelData.vertices.push_back(position);
-                modelData.normals.push_back(normal);
-                modelData.textureCoordinates.push_back(textureCoordinates);
+                modelData[meshNumber].vertices.push_back(position);
+                modelData[meshNumber].normals.push_back(normal);
+                modelData[meshNumber].textureCoordinates.push_back(textureCoordinates);
                 // BBox
-                modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, position);
-                modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, position);
-                modelData.indexes.push_back(counter);
+                modelData[meshNumber].Bbox.bboxMax = glm::max(modelData[meshNumber].Bbox.bboxMax, position);
+                modelData[meshNumber].Bbox.bboxMin = glm::min(modelData[meshNumber].Bbox.bboxMin, position);
+                modelData[meshNumber].indexes.push_back(counter);
                 counter++;
             }
             else
@@ -1446,39 +1432,29 @@ void ObjLoader(std::string inputFile, ModelData& modelData)
                 auto hash = VertexBitHash(&position, &normal, &textureCoordinates);
                 if (uniqueVertices.count(hash) == 0)
                 {
-                    modelData.vertices.push_back(position);
-                    modelData.normals.push_back(normal);
-                    modelData.textureCoordinates.push_back(textureCoordinates);
+                    modelData[meshNumber].vertices.push_back(position);
+                    modelData[meshNumber].normals.push_back(normal);
+                    modelData[meshNumber].textureCoordinates.push_back(textureCoordinates);
                     // BBox
-                    modelData.Bbox.bboxMax = glm::max(modelData.Bbox.bboxMax, position);
-                    modelData.Bbox.bboxMin = glm::min(modelData.Bbox.bboxMin, position);
-                    modelData.indexes.push_back(counter);
+                    modelData[meshNumber].Bbox.bboxMax = glm::max(modelData[meshNumber].Bbox.bboxMax, position);
+                    modelData[meshNumber].Bbox.bboxMin = glm::min(modelData[meshNumber].Bbox.bboxMin, position);
+                    modelData[meshNumber].indexes.push_back(counter);
                     uniqueVertices[hash] = counter;
                     ++counter;
                 }
                 else
                 {
-                    modelData.indexes.push_back(uniqueVertices[hash]);
+                    modelData[meshNumber].indexes.push_back(uniqueVertices[hash]);
                 }
             }
         }
+        modelData[meshNumber].Bbox.centroid = (modelData[meshNumber].Bbox.bboxMin + modelData[meshNumber].Bbox.bboxMax) * 0.5f;
+		ComputeTangents(modelData[meshNumber]);
+        meshNumber++;
     }
-    modelData.Bbox.centroid = (modelData.Bbox.bboxMin + modelData.Bbox.bboxMax) * 0.5f;
-    ComputeTangents(modelData);
-
-    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
-
 #ifdef OPTIMIZE
 #else
-    std::cout << "Vertices: " << modelData.vertices.size() << "\n";
-    std::cout << "Normals: " << modelData.normals.size() << "\n";
-    std::cout << "Tangents: " << modelData.tangents.size() << "\n";
-    std::cout << "Indices: " << modelData.indexes.size() << "\n";
-    std::cout << "Texture Coordinates: " << modelData.textureCoordinates.size() << "\n";
-    std::cout << "Materials: " << materials.size() << "\n";
-    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
+	printModelData(modelData);
 #endif
 }
 
@@ -1494,10 +1470,8 @@ const float* GetDataFromAccessorGLTF(const tinygltf::Model &model, const tinyglt
     return result;
 }
 
-void loadGLTF(tinygltf::Model &model, ModelData& modelData) 
+void loadGLTF(tinygltf::Model &model, std::vector<ModelData>& modelData) 
 {
-    ClearModelVertexData(modelData);
-
     std::unordered_map<std::bitset<256>, uint32_t> uniqueVertices;
     uint32_t counter = 0;
     int primCounter = 0;
@@ -1506,8 +1480,13 @@ void loadGLTF(tinygltf::Model &model, ModelData& modelData)
     std::vector<unsigned short> _u16Buffer;
     std::vector<unsigned char> _u8Buffer;
 
+	modelData.resize(model.meshes.size());
+
+	uint16_t meshNumber = 0;
+
     for (auto &mesh : model.meshes) 
     {
+        ClearModelVertexData(modelData[meshNumber]);
 #ifdef OPTIMIZE
 #else
         std::cout << "mesh : " << mesh.name << std::endl;
@@ -1515,10 +1494,10 @@ void loadGLTF(tinygltf::Model &model, ModelData& modelData)
         for (const auto& prim : mesh.primitives)
         {
 
-            bool result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData.vertices,           "POSITION");
-                 result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData.normals,            "NORMAL");
-                 result = GLTF::GetAttributes<glm::vec2>(model, prim, modelData.textureCoordinates, "TEXCOORD_0");
-                 result = GLTF::GetAttributes<glm::vec4>(model, prim, modelData.tangents,           "TANGENT");
+            bool result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData[meshNumber].vertices,           "POSITION");
+                 result = GLTF::GetAttributes<glm::vec3>(model, prim, modelData[meshNumber].normals,            "NORMAL");
+                 result = GLTF::GetAttributes<glm::vec2>(model, prim, modelData[meshNumber].textureCoordinates, "TEXCOORD_0");
+                 result = GLTF::GetAttributes<glm::vec4>(model, prim, modelData[meshNumber].tangents,           "TANGENT");
 
             if (prim.indices > -1)
             {
@@ -1531,17 +1510,17 @@ void loadGLTF(tinygltf::Model &model, ModelData& modelData)
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT:
                     _u32Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u32Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned int));
-                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u32Buffer.begin()), std::make_move_iterator(_u32Buffer.end()));
+                    modelData[meshNumber].indexes.insert(modelData[meshNumber].indexes.end(), std::make_move_iterator(_u32Buffer.begin()), std::make_move_iterator(_u32Buffer.end()));
                     break;
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT:
                     _u16Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u16Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned short));
-                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u16Buffer.begin()), std::make_move_iterator(_u16Buffer.end()));
+                    modelData[meshNumber].indexes.insert(modelData[meshNumber].indexes.end(), std::make_move_iterator(_u16Buffer.begin()), std::make_move_iterator(_u16Buffer.end()));
                     break;
                 case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE:
                     _u8Buffer.resize(indexAccessor.count);
                     std::memcpy(&_u8Buffer[0], &buffer.data[indexAccessor.byteOffset + bufferView.byteOffset], indexAccessor.count * sizeof(unsigned char));
-                    modelData.indexes.insert(modelData.indexes.end(), std::make_move_iterator(_u8Buffer.begin()), std::make_move_iterator(_u8Buffer.end()));
+                    modelData[meshNumber].indexes.insert(modelData[meshNumber].indexes.end(), std::make_move_iterator(_u8Buffer.begin()), std::make_move_iterator(_u8Buffer.end()));
                     break;
                 default:
                     std::cerr << "Unknown index component type : " << indexAccessor.componentType << " is not supported" << std::endl;
@@ -1550,41 +1529,42 @@ void loadGLTF(tinygltf::Model &model, ModelData& modelData)
             }
             else
             {
-                //! Primitive without indices, creating them
+                std::cout << "Primitive without indices, creating them" << std::endl;
                 const auto& accessor = model.accessors[prim.attributes.find("POSITION")->second];
                 for (unsigned int i = 0; i < accessor.count; ++i)
-                    modelData.indexes.push_back(i);
+                {
+                    modelData[meshNumber].indexes.push_back(i);
+                }
             }
-
         }
+        if (modelData[meshNumber].tangents.size() == 0)
+        {
+            std::cout << "No tangents, computing them!" << std::endl;
+            ComputeTangents(modelData[meshNumber]);
+        }
+        meshNumber += 1u;
     }
 
-    if (modelData.tangents.size() == 0)
-    {
-        std::cout << "No tangents, computing them!" << std::endl;
-        ComputeTangents(modelData);
-    }
+    
 
 #ifdef OPTIMIZE
 #else
-    std::cout << "Vertices: " << modelData.vertices.size() << "\n";
-    std::cout << "Normals: " << modelData.normals.size() << "\n";
-    std::cout << "Texture Coordinates: " << modelData.textureCoordinates.size() << "\n";
-    std::cout << "Tangents: " << modelData.tangents.size() << "\n";
-    std::cout << "Indices: " << modelData.indexes.size() << "\n";
-    //std::cout << "Materials: " << materials.size() << "\n";
-    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
+	printModelData(modelData);
 #endif
-    for (int i = 0; i < modelData.vertices.size(); ++i)
+	// Compute bounding boxes.
+    for (int i = 0; i < modelData.size(); ++i)
     {
-        glm::vec3 vertex = modelData.vertices[i];
-        modelData.Bbox.bboxMin = glm::min(vertex, modelData.Bbox.bboxMin);
-        modelData.Bbox.bboxMax = glm::max(vertex, modelData.Bbox.bboxMax);
+        for (int j = 0; j < modelData[i].vertices.size(); ++j)
+        {
+            glm::vec3 vertex = modelData[i].vertices[j];
+            modelData[i].Bbox.bboxMin = glm::min(vertex, modelData[i].Bbox.bboxMin);
+            modelData[i].Bbox.bboxMax = glm::max(vertex, modelData[i].Bbox.bboxMax);
+        }
+        modelData[i].Bbox.centroid = (modelData[i].Bbox.bboxMin + modelData[i].Bbox.bboxMax) * 0.5f;
     }
-    modelData.Bbox.centroid = (modelData.Bbox.bboxMin + modelData.Bbox.bboxMax) * 0.5f;
-    std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
-    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";
+    
+    /*std::cout << "BboxMax: {x: " << modelData.Bbox.bboxMax.x << ", y: " << modelData.Bbox.bboxMax.y << ", z: " << modelData.Bbox.bboxMax.z << "}\n";
+    std::cout << "BboxMin: {x: " << modelData.Bbox.bboxMin.x << ", y: " << modelData.Bbox.bboxMin.y << ", z: " << modelData.Bbox.bboxMin.z << "}\n";*/
 
     _u8Buffer.clear();
     _u16Buffer.clear();
@@ -1641,6 +1621,14 @@ void CreateBOs(ModelData& modelData)
     glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
 }
 
+void CreateBOs(std::vector<ModelData>& modelData)
+{
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        CreateBOs(modelData[i]);
+    }
+}
+
 void BuildBVH(ModelData& modelData)
 {
     nanort::BVHBuildOptions<float> build_options;  // Use default option
@@ -1687,6 +1675,14 @@ void BuildBVH(ModelData& modelData)
     //modelData.bvo.accel = accelDummy;
 }
 
+void BuildBVH(std::vector<ModelData>& modelData)
+{
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        BuildBVH(modelData[i]);
+    }
+}
+
 float computeBiasDepthComparison(const ModelData& modelData, const float& scale = 0.00025)
 {
     return fabs(modelData.Bbox.bboxMax.z - modelData.Bbox.bboxMin.z) * scale;
@@ -1701,6 +1697,14 @@ void reloadModel(ModelData& modelData)
     //std::cout << "Recomputed BBox Center: {x: " << modelData.Bbox.centroid.x << ", y: " << modelData.Bbox.centroid.y << ", z:" << modelData.Bbox.centroid.z << "}\n";
 }
 
+void reloadModel(std::vector<ModelData>& modelData)
+{
+    for (auto model : modelData)
+    {
+        reloadModel(model);
+    }
+}
+
 void recomputeDecalBaseColorTexture(Shader& shader, const Shader::TEXTURE_WRAP_PARAMS& wrapParam, const Shader::TEXTURE_SAMPLE_PARAMS& sampleParam)
 {
     //decalsPass.createTexture(&decalTexture, "Assets/Textures/WatchMen.jpeg", "iChannel0", 1);
@@ -1710,8 +1714,8 @@ void recomputeDecalBaseColorTexture(Shader& shader, const Shader::TEXTURE_WRAP_P
     std::cout << "Changing texture" << std::endl;
 #endif
     flip = 1;
-    glGenTextures(1, &(modelData.material.decalBaseColor));
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+    glGenTextures(1, &(modelData[0].material.decalBaseColor));
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.decalBaseColor);
 
     shader.textureWrap(wrapParam);
     shader.textureSample(sampleParam);
@@ -1753,8 +1757,8 @@ void recomputeDecalNormalTexture(Shader& shader, const Shader::TEXTURE_WRAP_PARA
     std::cout << "Changing texture" << std::endl;
 #endif
     flip = 1;
-    glGenTextures(1, &(modelData.material.decalNormal));
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
+    glGenTextures(1, &(modelData[0].material.decalNormal));
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.decalNormal);
 
     shader.textureWrap(wrapParam);
     shader.textureSample(sampleParam);
@@ -2059,7 +2063,6 @@ void createAndAttachTextureSpaceRbo(const ModelData& modelData, Shader& shader, 
     {
         glGenTextures(1, &(textureSpaceFramebuffer.textures[i]));
         glBindTexture(GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i]);
-        //glTexImage2D(GL_TEXTURE_2D, 0, modelData.material.channels[i], shader.Width, shader.Height, 0, modelData.material.channels[i], GL_UNSIGNED_BYTE, NULL);
         
         int mipWidth = shader.Width,
             mipHeight = shader.Height; 
@@ -2071,15 +2074,9 @@ void createAndAttachTextureSpaceRbo(const ModelData& modelData, Shader& shader, 
             mipHeight = std::max(1, mipHeight / 2);
 			std::cout << "Mip level: " << j << " Width: " << mipWidth << " Height: " << mipHeight << std::endl;
         }
-        // Specify storage for all levels of a two-dimensional array texture.
-		//glTexStorage2D(GL_TEXTURE_2D, mipLevels, modelData.material.channels[i], shader.Width, shader.Height);
-        //glTexStorage2D()
         shader.textureWrap(wrapParam);
         shader.textureSample(sampleParam);
 
-		//glGenerateMipmap(GL_TEXTURE_2D);
-        //drawBuffersFBO[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
-        //std::cout << "Attachment: " << drawBuffersFBO[i] << std::endl;
         glFramebufferTexture2D(GL_FRAMEBUFFER, drawBuffersFBO[i], GL_TEXTURE_2D, textureSpaceFramebuffer.textures[i], 0);
     }
 
@@ -2212,12 +2209,11 @@ struct Light
 };
 Light light;
 
-void readModelsPreload(ModelData& modelData, std::vector<ModelData>& modelsData, 
+void readModelsPreload(std::vector<ModelData>& modelData, std::vector<std::vector<ModelData>>& modelsData, 
                        const std::vector<ModelFileNames>& fileNames, const int& pick)
 {
     for (uint8_t i = 0u; i < fileNames.size() - 1; ++i)
     {
-        ClearModelVertexData(modelsData[i]);
         if (fileExists(fileNames[i].mesh))
         {
             std::cout << "File: " << fileNames[i].mesh << " exists" << std::endl;
@@ -2242,23 +2238,36 @@ void readModelsPreload(ModelData& modelData, std::vector<ModelData>& modelsData,
                 std::cout << "Load GLTF Error!" << std::endl;
 #endif
             }
-            loadGLTF(modelGLTF, modelsData[i]);
+
+            for (uint16_t j = 0u; j < modelData.size(); ++j);
+            {
+                ClearModelsVertexData(modelsData[i]);
+                loadGLTF(modelGLTF, modelsData[i]);
+			}
+            
         }
         else if (fileType == "obj")
         {
             std::string fileString = fileToString(fileNames[i].mesh);
-            ObjLoader(fileString, modelsData[i]);
+            for (uint16_t j = 0u; j < modelsData.size(); ++j)
+            {
+                ClearModelsVertexData(modelsData[i]);
+                ObjLoader(fileString, modelsData[i]);
+			}
         }
-         // Build the acceleration structure for ray tracing.
-        BuildBVH(modelsData[i]); 
     }
 
     // Procedural Sphere.
     size_t lastIndex = fileNames.size() - 1;
-    renderSphere(modelsData[lastIndex]);
-    BuildBVH(modelsData[lastIndex]);
+    modelsData[lastIndex].resize(1);
+    renderSphere(modelsData[lastIndex][0]);
+    // Build the acceleration structure for ray tracing.
+    for (uint16_t i = 0u; i < modelsData.size(); ++i)
+    {
+        BuildBVH(modelsData[i]);
+    }
 
-    ClearModelVertexData(modelData);
+    ClearModelsVertexData(modelData);
     modelData = modelsData[pick];
 }
 
@@ -2405,14 +2414,23 @@ int main()
     fileNames[1].roughness = "../Assets/CaterpillarWorkboot/textures/sh_catWorkBoot_rough.jpg";
     fileNames[1].decalBaseColor = "../Assets/Textures/Watchmen_2.png";
     fileNames[1].decalNormal = "../Assets/Textures/Watchmen_2_normal.png";
-    
-    fileNames[2].mesh = "";
+
+    // https://sketchfab.com/3d-models/real-army-jacket-730e9269cdb647f1898b2b87190d6b4e
+    fileNames[2].mesh = "../Assets/Jacket/real_army_jacket.glb";
     fileNames[2].baseColor = "../Assets/Sphere/rustediron2_basecolor.png";
     fileNames[2].normal = "../Assets/Sphere/rustediron2_normal.png";
     fileNames[2].metallic = "../Assets/Sphere/rustediron2_metallic.png";
     fileNames[2].roughness = "../Assets/Sphere/rustediron2_roughness.png";
     fileNames[2].decalBaseColor = "../Assets/Textures/Watchmen.png";
     fileNames[2].decalNormal = "../Assets/Textures/Watchmen_normal.png";
+
+    fileNames[3].mesh = "";
+    fileNames[3].baseColor = "../Assets/Sphere/rustediron2_basecolor.png";
+    fileNames[3].normal = "../Assets/Sphere/rustediron2_normal.png";
+    fileNames[3].metallic = "../Assets/Sphere/rustediron2_metallic.png";
+    fileNames[3].roughness = "../Assets/Sphere/rustediron2_roughness.png";
+    fileNames[3].decalBaseColor = "../Assets/Textures/Watchmen.png";
+    fileNames[3].decalNormal = "../Assets/Textures/Watchmen_normal.png";
     #endif
 #ifdef OPTIMIZE
     std::cout << "Optimize" << std::endl;
@@ -2454,9 +2472,13 @@ int main()
     {
         pick = 1;
     }
-    else
+    else if (currentModel == JACKET)
     {
         pick = 2;
+    }
+    else
+    {
+        pick = 3;
     }
 
     /**
@@ -2475,13 +2497,13 @@ int main()
     Shader::TEXTURE_SAMPLE_PARAMS textureSampleParams = Shader::LINEAR_MIPS;
 
 	geometryPass.use();
-    geometryPass.createTexture(&(modelData.material.baseColor), fileNames[pick].baseColor, textureWrapParams, textureSampleParams, "iAlbedo", 0, modelData.material.channels[0]);
+    geometryPass.createTexture(&(modelData[0].material.baseColor), fileNames[pick].baseColor, textureWrapParams, textureSampleParams, "iAlbedo", 0, modelData[0].material.channels[0]);
     //std::cout << "Number of channels in iAlbedo: " << modelData.material.channels[0] << std::endl;
-    geometryPass.createTexture(&(modelData.material.normal),    fileNames[pick].normal,    textureWrapParams, textureSampleParams, "iNormal", 1,    modelData.material.channels[1]);
+    geometryPass.createTexture(&(modelData[0].material.normal), fileNames[pick].normal, textureWrapParams, textureSampleParams, "iNormal", 1, modelData[0].material.channels[1]);
     //std::cout << "Number of channels in iNormal: " << modelData.material.channels[1] << std::endl;
     if (fileNames[pick].metallic != "")
     {
-        geometryPass.createTexture(&(modelData.material.metallic), fileNames[pick].metallic, textureWrapParams, textureSampleParams, "iMetallic", 2, modelData.material.channels[2]);
+        geometryPass.createTexture(&(modelData[0].material.metallic), fileNames[pick].metallic, textureWrapParams, textureSampleParams, "iMetallic", 2, modelData[0].material.channels[2]);
         iMetal = true;
     }
     else
@@ -2491,7 +2513,7 @@ int main()
     //std::cout << "Number of channels in iMetallic: " << modelData.material.channels[2] << std::endl;
     if (fileNames[pick].roughness != "")
     {
-        geometryPass.createTexture(&(modelData.material.roughness), fileNames[pick].roughness, textureWrapParams, textureSampleParams, "iRoughness", 3, modelData.material.channels[3]);
+        geometryPass.createTexture(&(modelData[0].material.roughness), fileNames[pick].roughness, textureWrapParams, textureSampleParams, "iRoughness", 3, modelData[0].material.channels[3]);
         iRough = true;
     }
     else
@@ -2508,11 +2530,11 @@ int main()
      *  Start Create Decals Texture 
      */
     decalsPass.use();
-    decalsPass.createTexture(&(modelData.material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iDecalAlbedo", 4, modelData.material.channels[5]);
-    decalsPass.createTexture(&(modelData.material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData.material.channels[6]);
+    decalsPass.createTexture(&(modelData[0].material.decalBaseColor), fileNames[pick].decalBaseColor, textureWrapParams, textureSampleParams, "iDecalAlbedo", 4, modelData[0].material.channels[5]);
+    decalsPass.createTexture(&(modelData[0].material.decalNormal), fileNames[pick].decalNormal, textureWrapParams, textureSampleParams, "iDecalNormal", 5, modelData[0].material.channels[6]);
 
 
-    decalsPass.setFloat("bias", computeBiasDepthComparison(modelData));
+    decalsPass.setFloat("bias", computeBiasDepthComparison(modelData[0]));
     decalsPass.setInt("iAlbedo",      0);
     decalsPass.setInt("iNormal",      1);
     decalsPass.setInt("iMetallic",    2);
@@ -2534,7 +2556,7 @@ int main()
     /** Start Texture Space Buffer **/
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;// NEAREST;
-    createAndAttachTextureSpaceRbo(modelData, geometryPass, textureSpaceFramebuffer, textureWrapParams, textureSampleParams);
+    createAndAttachTextureSpaceRbo(modelData[0], geometryPass, textureSpaceFramebuffer, textureWrapParams, textureSampleParams);
     /** End Texture Space Buffer **/
 
     glm::ivec4 widthHeightJFA = glm::ivec4(decalsPass.Width, decalsPass.Height, decalsPass.Width / JFA_FACTOR, decalsPass.Height / JFA_FACTOR);
@@ -2591,8 +2613,11 @@ int main()
     
 	// Create the camera (eye).
 	view = glm::mat4(1.0f);
-	modelData.modelMatrix = glm::mat4(1.0f);
-
+    /*for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        modelData[i].modelMatrix = glm::mat4(1.0f);
+    }*/
+    modelData[0].modelMatrix = glm::mat4(1.0f);
     light.position = glm::vec3(0.0f);
     light.model = glm::mat4(0.0f);
 
@@ -2605,10 +2630,10 @@ int main()
 
     int click = 0;
 
-    modelData.bvo.hitPos = glm::vec3(0.0, 0.0, 0.0);
-    modelData.bvo.hitNor = glm::vec3(1.0, 1.0, 1.0);
+    modelData[0].bvo.hitPos = glm::vec3(0.0, 0.0, 0.0);
+    modelData[0].bvo.hitNor = glm::vec3(1.0, 1.0, 1.0);
 
-    modelNoGuizmo = modelData.modelMatrix;
+    modelNoGuizmo = modelData[0].modelMatrix;
 
     //mousePositionX = WIDTH / 2;
     //mousePositionY = HEIGHT / 2;
@@ -2645,11 +2670,8 @@ int main()
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
-    ClearModelVertexData(modelData);
-    for (auto& model : modelsData)
-    {
-        ClearModelVertexData(model);
-    }
+    ClearModelsVertexData(modelData);
+
     //delete[] mesh.Vertices;
     //delete[] mesh.Normals;
     //delete[] mesh.Faces;
@@ -2668,7 +2690,7 @@ void updateViewMatrix()
     glm::mat4 rotate = glm::mat4_cast(orientation);
     
     glm::mat4 translate = glm::mat4(1.0f);
-    glm::vec3 eye = modelData.Bbox.centroid - glm::vec3(-m_cameraState.position, m_cameraState.zoom);
+    glm::vec3 eye = modelData[0].Bbox.centroid - glm::vec3(-m_cameraState.position, m_cameraState.zoom);
     translate = glm::translate(translate, -eye);
     view = translate * rotate;
     glm::mat4 invView = glm::inverse(view);
@@ -2678,7 +2700,7 @@ void updateViewMatrix()
 void updateViewMatrixPanels(const glm::vec2& position, const float& zoom, glm::mat4& view)
 {
     glm::mat4 translate = glm::mat4(1.0f);
-    glm::vec3 eye = modelData.Bbox.centroid - glm::vec3(position, zoom);
+    glm::vec3 eye = modelData[0].Bbox.centroid - glm::vec3(position, zoom);
     translate = glm::translate(translate, -eye);
     view = translate;
 }
@@ -2708,7 +2730,10 @@ void mouse_press(SDL_Event& event)
         case SDL_BUTTON_RIGHT:
         {
             // Raytracing.
-            modelData.bvo.isTracing = true;
+            for (uint16_t i = 0u; i < modelData.size(); ++i)
+            {
+                modelData[i].bvo.isTracing = true;
+            }
             // Raytrace.
             rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
                      /* In and Out */modelData, 
@@ -2817,7 +2842,10 @@ void mouse_unpressed(SDL_Event& event)
             mousePositionY = currentMouse.y;
             std::cout <<  "Mouse Position X: " << mousePositionX << 
                          " Mouse Position Y: " << mousePositionY << std::endl;
-            modelData.bvo.isTracing = false;
+            for (uint16_t i = 0u; i < modelData.size(); ++i)
+            {
+                modelData[i].bvo.isTracing = false;
+            }
             if (splitScreen)
             {
                 if (event.motion.x < (WIDTH / 2))
@@ -2956,12 +2984,9 @@ void mouse_motion(SDL_Event& event)
         }
     }
     // Raytrace.
-    if (modelData.bvo.isTracing)
-    {
-        rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight, 
-                 /* In and Out */modelData, 
-                 projection, view, false);
-    }
+    rayTrace(event.motion.x + (splitScreen ? WIDTH / 4 : 0), event.motion.y, widthHeight,
+        /* In and Out */modelData,
+        projection, view, false);
 }
 
 void updateZoom(SDL_MouseWheelEvent* mouseWheel)
@@ -3132,46 +3157,46 @@ void regenerateDepthFramebufferTexture(frameBuffer& framebuffer)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, framebuffer.textures[0], 0);
 }
 
-void regenerateModel(ModelData& modelData, Shader& shader, Shader& decalsShader, const ModelData& newModelData, frameBuffer& framebuffer, const std::vector<ModelFileNames>& fileNamesVector, const int& pickModel, bool& iMetal, bool& iRough)
+void regenerateModel(std::vector<ModelData>& modelData, std::vector<ModelData>& newModelData, Shader& shader, Shader& decalsShader, frameBuffer& framebuffer, const std::vector<ModelFileNames>& fileNamesVector, const int& pickModel, bool& iMetal, bool& iRough)
 {
-    ClearModelVertexData(modelData);
+    ClearModelsVertexData(modelData);
     modelData = newModelData;
 
 	ModelFileNames fileNames = fileNamesVector[pickModel];
-    regenerateTexture(shader, modelData, BASE_COLOR, fileNames.baseColor, framebuffer);
-    regenerateTexture(shader, modelData, NORMAL,     fileNames.normal, framebuffer);
+    regenerateTexture(shader, modelData[0], BASE_COLOR, fileNames.baseColor, framebuffer);
+    regenerateTexture(shader, modelData[0], NORMAL,     fileNames.normal, framebuffer);
     
     if (fileNames.metallic != "")
     {
-        regenerateTexture(shader, modelData, METAL, fileNames.metallic, framebuffer);
+        regenerateTexture(shader, modelData[0], METAL, fileNames.metallic, framebuffer);
         //iMetal = true;
     }
     else
     {
         std::cout << "No data for metallic texture" << std::endl;
 		//std::cout << "Filename metallic: " << fileNamesVector[2].metallic << std::endl;
-        regenerateTexture(shader, modelData, METAL, fileNamesVector[2].metallic, framebuffer);
+        regenerateTexture(shader, modelData[0], METAL, fileNamesVector[2].metallic, framebuffer);
         //iMetal = false;
     }
     if (fileNames.roughness != "")
     {
-        regenerateTexture(shader, modelData, ROUGH, fileNames.roughness, framebuffer);
+        regenerateTexture(shader, modelData[0], ROUGH, fileNames.roughness, framebuffer);
         //iRough = true;
     }
     else
     {
         std::cout << "No data for roughness texture" << std::endl;
         //std::cout << "Filename roughness: " << fileNamesVector[2].roughness << std::endl;
-        regenerateTexture(shader, modelData, ROUGH, fileNamesVector[2].roughness, framebuffer);
+        regenerateTexture(shader, modelData[0], ROUGH, fileNamesVector[2].roughness, framebuffer);
         //iRough = false;
     }
 	std::cout << "iMetal: " << iMetal << " iRough: " << iRough << std::endl;
 
     frameBuffer fboDummy;
-    regenerateTexture(decalsShader, modelData, DECAL_BASE_COLOR, fileNames.decalBaseColor, fboDummy);
-    regenerateTexture(decalsShader, modelData, DECAL_NORMAL, fileNames.decalNormal, fboDummy);
+    regenerateTexture(decalsShader, modelData[0], DECAL_BASE_COLOR, fileNames.decalBaseColor, fboDummy);
+    regenerateTexture(decalsShader, modelData[0], DECAL_NORMAL, fileNames.decalNormal, fboDummy);
     
-    float biasDepthComparison = computeBiasDepthComparison(modelData, depthBias);
+    float biasDepthComparison = computeBiasDepthComparison(modelData[0], depthBias);
     decalsPass.setFloat("bias", biasDepthComparison);
     CreateBOs(modelData);
     updateViewMatrix();
@@ -3233,8 +3258,9 @@ void main_loop()
     float timeSpeed = iTime * light.speed;
     float sinTime = sinf(timeSpeed) * 2.0f;
     float cosTime = cosf(timeSpeed) * 2.0f;
-    glm::vec3 lightPosition = (modelData.Bbox.centroid +
-                               glm::vec3(0.0f, modelData.Bbox.bboxMax.y, 0.0f));
+    // Change for all the meshes of the model BBox.
+    glm::vec3 lightPosition = (modelData[0].Bbox.centroid +
+                               glm::vec3(0.0f, modelData[0].Bbox.bboxMax.y, 0.0f));
     glm::vec3 rotateLight = glm::vec3(sinTime, 1.0f, cosTime);
     rotateLight += lightPosition;
     light.model = glm::mat4(1.0f);
@@ -3439,7 +3465,7 @@ void main_loop()
     }
     
     bool regeneratedModel = false;
-    static const char* modelsToSelect[]{ "Shirt", "Workboot", "Sphere" };
+    static const char* modelsToSelect[]{ "Shirt", "Workboot", "Jacket", "Sphere"};
     static const char* selectedModel = modelsToSelect[0];
     int pickModel = 0;
     if (currentModel == SHIRT)
@@ -3452,11 +3478,16 @@ void main_loop()
         selectedModel = modelsToSelect[1];
 		pickModel = 1;
     }
-    else
+    else if (currentModel == JACKET)
     {
         selectedModel = modelsToSelect[2];
 		pickModel = 2;
 	}
+    else // SPHERE
+    {
+		selectedModel = modelsToSelect[3];
+        pickModel = 3;
+    }
     bool selectedModelDirty = ImGui::BeginCombo("Model", selectedModel, 0);
     if (selectedModelDirty)
     {
@@ -3495,10 +3526,20 @@ void main_loop()
             iRough = true;
             std::cout << "Workboot" << std::endl;
         }
+        else if (strcmp(selectedModel, "Jacket") == 0 && currentModel != JACKET)
+        {
+            currentModel = JACKET;
+            pickModel = 2;
+            recomputeModel = true;
+            drawingMode = GL_TRIANGLES;
+            iMetal = true;
+            iRough = true;
+            std::cout << "Jacket" << std::endl;
+        }
         else if (strcmp(selectedModel, "Sphere") == 0 && currentModel != SPHERE)
         {
             currentModel = SPHERE;
-            pickModel = 2;
+            pickModel = 3;
             recomputeModel = true;
             drawingMode = GL_TRIANGLE_STRIP;
             iMetal = true;
@@ -3513,7 +3554,7 @@ void main_loop()
             
 			std::cout << "iMetal: " << iMetal << " iRough: " << iRough << std::endl;
             
-            regenerateModel(modelData, geometryPass, decalsPass, modelsData[pickModel], textureSpaceFramebuffer, fileNames, pickModel, iMetal, iRough);
+            regenerateModel(modelData, modelsData[pickModel], geometryPass, decalsPass, textureSpaceFramebuffer, fileNames, pickModel, iMetal, iRough);
             
             frameJFA = 0;
             downloadImage = 1u;
@@ -3618,7 +3659,7 @@ void main_loop()
         for (int i = 0; i < 1; ++i)
         {
             ImGuizmo::PushID(i);
-            EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(modelData.modelMatrix), lastUsing == i, splitScreen, io);
+            EditTransform(glm::value_ptr(view), glm::value_ptr(projectionHalf), glm::value_ptr(modelData[0].modelMatrix), lastUsing == i, splitScreen, io);
             if (ImGuizmo::IsUsing())
             {
                 lastUsing = i;
@@ -3653,12 +3694,19 @@ void main_loop()
     glBindFramebuffer(GL_FRAMEBUFFER, depthFramebuffer.framebuffer);
 
     depthPrePass.use();
-    glBindVertexArray(modelData.openGLObject.VAO);
-    depthPrePass.setMat4("decalProjector", /*projection * view * modelData.modelMatrix);//*/modelData.bvo.decalProjector);
-    glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);
 
+    glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);
     glClear(GL_DEPTH_BUFFER_BIT);
-    glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        glBindVertexArray(modelData[i].openGLObject.VAO);
+        depthPrePass.setMat4("decalProjector", modelData[i].bvo.decalProjector);
+        /*glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);*/
+
+        /*glClear(GL_DEPTH_BUFFER_BIT);*/
+        glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+    }
 
     /** End Depth Pre-Pass **/
 
@@ -3695,7 +3743,7 @@ void main_loop()
         textureWrapParams = Shader::REPEAT;
         textureSampleParams = Shader::LINEAR_MIPS;
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+        glBindTexture(GL_TEXTURE_2D, modelData[0].material.decalBaseColor);
         JFAPass.textureWrap(textureWrapParams);
         JFAPass.textureSample(textureSampleParams);
         
@@ -3739,12 +3787,23 @@ void main_loop()
 
     glBindFramebuffer(GL_FRAMEBUFFER, textureSpaceFramebuffer.framebuffer);
 
+
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+        
+        if (modelData[i].bvo.decalProjector != glm::mat4(1.0f))
+        {
+            modelData[0].bvo.decalProjector = modelData[i].bvo.decalProjector;
+        }
+    }
+
     decalsPass.use();
-    decalsPass.setMat4("model", modelData.modelMatrix);
+    decalsPass.setMat4("model", modelData[0].modelMatrix);
     decalsPass.setMat4("view", view);
     decalsPass.setMat4("projection", projection);
-    decalsPass.setMat4("decalProjector", modelData.bvo.decalProjector);
-    
+
+    decalsPass.setMat4("decalProjector", modelData[0].bvo.decalProjector);
+
     decalsPass.setVec2("iResolution", widthHeight);
     decalsPass.setInt("iScale", scale);
     decalsPass.setFloat("iFlip", flipFloat);
@@ -3756,15 +3815,13 @@ void main_loop()
     decalsPass.setBool("iMetal", iMetal);
     decalsPass.setBool("iRough", iRough);
 
-    glBindVertexArray(modelData.openGLObject.VAO);
-
-    std::array<unsigned int, 6> textureArray = { modelData.material.baseColor, modelData.material.normal, modelData.material.metallic, modelData.material.roughness,
-		modelData.material.decalBaseColor, modelData.material.decalNormal };
+    std::array<unsigned int, 6> textureArray = { modelData[0].material.baseColor, modelData[0].material.normal, modelData[0].material.metallic, modelData[0].material.roughness,
+        modelData[0].material.decalBaseColor, modelData[0].material.decalNormal };
     // Albedo
     textureWrapParams = Shader::CLAMP_TO_EDGE;
     textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.baseColor);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.baseColor);
     decalsPass.textureWrap(textureWrapParams);
     decalsPass.textureSample(textureSampleParams);
 
@@ -3773,28 +3830,28 @@ void main_loop()
     //textureWrapParams = Shader::CLAMP_TO_EDGE;
     //textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.normal);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.normal);
 
     // Metallic
     //decalsPass.setInt("iMetallic", 2);
     //textureWrapParams = Shader::CLAMP_TO_EDGE;
     //textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.metallic);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.metallic);
 
     // Roughness
     //decalsPass.setInt("iRoughness", 3);
     //textureWrapParams = Shader::CLAMP_TO_EDGE;
     //textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.roughness);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.roughness);
     
     // Decal Base Color
     //decalsPass.setInt("iDecalAlbedo", 4);
     //textureWrapParams = Shader::CLAMP_TO_EDGE;
     //textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalBaseColor);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.decalBaseColor);
     //decalsPass.textureWrap(textureWrapParams);
     //decalsPass.textureSample(textureSampleParams);
 
@@ -3803,7 +3860,7 @@ void main_loop()
     //textureWrapParams = Shader::CLAMP_TO_EDGE;
     //textureSampleParams = Shader::LINEAR_MIPS;
     glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_2D, modelData.material.decalNormal);
+    glBindTexture(GL_TEXTURE_2D, modelData[0].material.decalNormal);
     //decalsPass.textureWrap(textureWrapParams);
     //decalsPass.textureSample(textureSampleParams);
     
@@ -3825,12 +3882,25 @@ void main_loop()
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_2D, sdfFramebuffer.textures[0]);
         
-    glViewport(0, 0, geometryPass.Width, geometryPass.Height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+    for (uint16_t i = 0u; i < modelData.size(); ++i)
+    {
+		glBindVertexArray(modelData[i].openGLObject.VAO);
+        glViewport(0, 0, geometryPass.Width, geometryPass.Height);
 
+        /*
+        glBindVertexArray(modelData[i].openGLObject.VAO);
+        depthPrePass.setMat4("decalProjector", modelData[i].bvo.decalProjector);
+        glViewport(0, 0, WIDTH / DEPTH_FACTOR, HEIGHT / DEPTH_FACTOR);
+
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+        */
+
+        glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+    }
 	uint16_t mipLevels = (uint16_t)(std::floor(std::log2(std::max(geometryPass.Width, geometryPass.Height)))) + 1u;
     // Generate mipmaps.
     for (int i = 0; i < textureSpaceFramebuffer.textures.size(); ++i)
@@ -3936,28 +4006,34 @@ void main_loop()
         /*std::cout << "Print data before first draw call: " << std::endl;
         printModelData(modelData);*/
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindVertexArray(modelData.openGLObject.VAO);
-        deferredPass.use();
-        deferredPass.setMat4("model", modelData.modelMatrix);
-        deferredPass.setMat4("projection", projectionHalf);
-        deferredPass.setMat4("view", view);
-        deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-        deferredPass.setBool("iPBR", pbr);
-        
-        activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
-        
-        deferredPass.setVec3("viewPos", camPos);
-        deferredPass.setVec3("lightPos", light.position);
-        deferredPass.setFloat("iTime", iTime);
-        deferredPass.setInt("iFlipper", flipper);
-        deferredPass.setInt("iNormals", enableNormals);
-        deferredPass.setFloat("iTime", iTime);
-        
-        // finally render quad
+
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+        for (uint i = 0u; i < modelData.size(); ++i)
+        {
+            glBindVertexArray(modelData[i].openGLObject.VAO);
+            deferredPass.use();
+            deferredPass.setMat4("model", modelData[i].modelMatrix);
+            deferredPass.setMat4("projection", projectionHalf);
+            deferredPass.setMat4("view", view);
+            deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+            deferredPass.setBool("iPBR", pbr);
+
+            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
+
+            deferredPass.setVec3("viewPos", camPos);
+            deferredPass.setVec3("lightPos", light.position);
+            deferredPass.setFloat("iTime", iTime);
+            deferredPass.setInt("iFlipper", flipper);
+            deferredPass.setInt("iNormals", enableNormals);
+            deferredPass.setFloat("iTime", iTime);
+
+            /*glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);*/
+
+            glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+        }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindVertexArray(0);
@@ -3970,19 +4046,19 @@ void main_loop()
             glEnable(GL_DEPTH_TEST);
 
             hitPosition.use();
-            hitPosition.setMat4("model", modelData.modelMatrix);
+            hitPosition.setMat4("model", modelData[0].modelMatrix);
             hitPosition.setMat4("projection", projectionHalf);
             hitPosition.setMat4("view", view);
             hitPosition.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
-            renderLineCube(modelData.Bbox.bboxMin, modelData.Bbox.bboxMax);
+            renderLineCube(modelData[0].Bbox.bboxMin, modelData[0].Bbox.bboxMax);
         }
 
         // Dummy modelData, it will not be modified given that we have already cached.
         ModelData modelDataDummy;
         if (showHitPoint)
         {
-            glm::mat4 hitPositionModel = modelData.modelMatrix;
-            hitPositionModel = glm::translate(hitPositionModel, modelData.bvo.hitPos);
+            glm::mat4 hitPositionModel = modelData[0].modelMatrix;
+            hitPositionModel = glm::translate(hitPositionModel, modelData[0].bvo.hitPos);
             hitPositionModel = glm::scale(hitPositionModel, glm::vec3(0.01f));
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -4003,11 +4079,11 @@ void main_loop()
             glEnable(GL_DEPTH_TEST);
 
             hitPosition.use();
-            hitPosition.setMat4("model", modelData.modelMatrix);
+            hitPosition.setMat4("model", modelData[0].modelMatrix);
             hitPosition.setMat4("projection", projectionHalf);
             hitPosition.setMat4("view", view);
             hitPosition.setVec3("color", glm::vec3(0.0f, 1.0f, 0.0f));
-            renderFrustum(modelData.bvo.decalProjector);
+            renderFrustum(modelData[0].bvo.decalProjector);
         }
 
         if (light.toggle)
@@ -4029,70 +4105,76 @@ void main_loop()
 
         if (splitScreen)
         {
-            // Side View.
-            glViewport(WIDTH / 2, 0, WIDTH / 2, HEIGHT / 2);
+            for (uint16_t i = 0u; i < modelData.size(); ++i)
+            {
+                // Side View.
+                glViewport(WIDTH / 2, 0, WIDTH / 2, HEIGHT / 2);
 
-            // Scale for the side view.
-            glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomSide, m_cameraState.zoomSide, m_cameraState.zoomSide));
-            modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
+                // Scale for the side view.
+                glm::mat4 modelSide = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomSide, m_cameraState.zoomSide, m_cameraState.zoomSide));
+                modelSide = glm::rotate(modelSide, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                //modelSide = glm::translate(modelSide, glm::vec3(0.0f, -0.5f, 0.0f) * differenceBboxMaxMin);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindVertexArray(modelData.openGLObject.VAO);
-            deferredPass.use();
-            deferredPass.setMat4("model", modelSide);
-            deferredPass.setMat4("projection", projectionSide);
-            deferredPass.setMat4("view", viewPinnedBottom);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000,
-                                                    0.000000, 0.981959, 0.189095, 0.000000,
-                                                    -0.993572, 0.021407, -0.111162, 0.000000,
-                                                    -0.064962, 0.388481, -4.221102, 1.000000));*/
-            deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glBindVertexArray(modelData[i].openGLObject.VAO);
+                deferredPass.use();
+                deferredPass.setMat4("model", modelSide);
+                deferredPass.setMat4("projection", projectionSide);
+                deferredPass.setMat4("view", viewPinnedBottom);/*glm::mat4(-0.113205, -0.187880, 0.975646, 0.000000,
+                                                        0.000000, 0.981959, 0.189095, 0.000000,
+                                                        -0.993572, 0.021407, -0.111162, 0.000000,
+                                                        -0.064962, 0.388481, -4.221102, 1.000000));*/
+                deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
+
+                activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
+
+                deferredPass.setVec3("viewPos", camPos);
+                deferredPass.setVec3("lightPos", light.position);
+                deferredPass.setFloat("iTime", iTime);
+                deferredPass.setInt("iFlipper", flipper);
+                deferredPass.setInt("iNormals", enableNormals);
+                deferredPass.setFloat("iTime", iTime);
+
             
-            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
+                glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glBindVertexArray(0);
+            }
 
-            deferredPass.setVec3("viewPos", camPos);
-            deferredPass.setVec3("lightPos", light.position);
-            deferredPass.setFloat("iTime", iTime);
-            deferredPass.setInt("iFlipper", flipper);
-            deferredPass.setInt("iNormals", enableNormals);
-            deferredPass.setFloat("iTime", iTime);
+            for (uint16_t i = 0u; i < modelData.size(); ++i)
+            {
 
-            glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
+                // Front View.
+                glViewport(WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindVertexArray(0);
+                // Scale for the side view.
+                glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomTop, m_cameraState.zoomTop, m_cameraState.zoomTop));
+                //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
 
-            // Front View.
-            glViewport(WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glBindVertexArray(modelData[i].openGLObject.VAO);
+                deferredPass.use();
+                deferredPass.setMat4("model", modelTop);
+                deferredPass.setMat4("projection", projectionSide);
+                deferredPass.setMat4("view", viewPinnedTop);/*glm::mat4(1.0, 0.0,  0.0, 0.0,
+                                                        0.0, 1.0,  0.0, 0.0,
+                                                        0.0, 0.0,  1.0, 0.0,
+                                                        0.0, 0.0, -1.0, 1.0));*/
+                deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
 
-            // Scale for the side view.
-            glm::mat4 modelTop = glm::scale(modelNoGuizmo, glm::vec3(m_cameraState.zoomTop, m_cameraState.zoomTop, m_cameraState.zoomTop));
-            //modelTop = glm::translate(modelTop, glm::vec3(0.0f, -0.5f, 0.5f) * differenceBboxMaxMin);
+                activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindVertexArray(modelData.openGLObject.VAO);
-            deferredPass.use();
-            deferredPass.setMat4("model", modelTop);
-            deferredPass.setMat4("projection", projectionSide);
-            deferredPass.setMat4("view", viewPinnedTop);/*glm::mat4(1.0, 0.0,  0.0, 0.0,
-                                                    0.0, 1.0,  0.0, 0.0,
-                                                    0.0, 0.0,  1.0, 0.0,
-                                                    0.0, 0.0, -1.0, 1.0));*/
-            deferredPass.setFloat("iFlipAlbedo", flipAlbedoFloat);
-            
-            activateAndBindTexturesTexSpaceFramebuffer(textureSpaceFramebuffer, deferredPass, textureWrapParamsDecalOutputs, textureSampleParamsDecalOutputs, textureArray, !true);
+                deferredPass.setVec3("viewPos", camPos);
+                deferredPass.setVec3("lightPos", light.position);
+                deferredPass.setFloat("iTime", iTime);
+                deferredPass.setInt("iFlipper", flipper);
+                deferredPass.setInt("iNormals", enableNormals);
+                deferredPass.setFloat("iTime", iTime);
 
-            deferredPass.setVec3("viewPos", camPos);
-            deferredPass.setVec3("lightPos", light.position);
-            deferredPass.setFloat("iTime", iTime);
-            deferredPass.setInt("iFlipper", flipper);
-            deferredPass.setInt("iNormals", enableNormals);
-            deferredPass.setFloat("iTime", iTime);
-
-            glDrawElements(drawingMode, (GLsizei)modelData.indexes.size(), GL_UNSIGNED_INT, 0);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindVertexArray(0);
+                glDrawElements(drawingMode, (GLsizei)modelData[i].indexes.size(), GL_UNSIGNED_INT, 0);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glBindVertexArray(0);
+            }
         }
     }
 

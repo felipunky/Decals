@@ -1,4 +1,7 @@
 TODOs
+	-Add bbox of all the meshes' vertices to ModelData.
+	-Add support for files with multiple meshes.
+	-Import textures from glb.
 	-Implement zoom for 2D maps (ex. Albedo Display)
 	-Add linear filtering to WASM build.
 	-Fix weird artifacts on texture space (lines).
